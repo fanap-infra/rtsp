@@ -16,12 +16,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/codec"
-	"github.com/daneshvar/rtsp/codec/aacparser"
-	"github.com/daneshvar/rtsp/codec/h264parser"
-	"github.com/daneshvar/rtsp/sdp"
-	"github.com/daneshvar/rtsp/utils/bits/pio"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/codec"
+	"github.com/fanap-infra/rtsp/codec/aacparser"
+	"github.com/fanap-infra/rtsp/codec/h264parser"
+	"github.com/fanap-infra/rtsp/sdp"
+	"github.com/fanap-infra/rtsp/utils/bits/pio"
 	"gitlab.com/behnama2/log"
 )
 

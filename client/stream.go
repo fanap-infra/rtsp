@@ -3,8 +3,8 @@ package client
 import (
 	"time"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/sdp"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/sdp"
 )
 
 type Stream struct {

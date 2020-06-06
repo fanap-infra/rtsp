@@ -1,7 +1,7 @@
 package fake
 
 import (
-	"github.com/daneshvar/rtsp/av"
+	"github.com/fanap-infra/rtsp/av"
 )
 
 type CodecData struct {

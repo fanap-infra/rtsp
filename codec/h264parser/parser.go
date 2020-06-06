@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/utils/bits"
-	"github.com/daneshvar/rtsp/utils/bits/pio"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/utils/bits"
+	"github.com/fanap-infra/rtsp/utils/bits/pio"
 )
 
 const (

@@ -1,4 +1,4 @@
-module github.com/daneshvar/rtsp
+module github.com/fanap-infra/rtsp
 
 go 1.14
 
