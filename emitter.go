@@ -3,6 +3,8 @@ package rtsp
 import (
 	"bytes"
 	"io"
+	"sync"
+	"sync/atomic"
 
 	"github.com/daneshvar/rtsp/av"
 	"github.com/daneshvar/rtsp/client"
@@ -19,20 +21,22 @@ type Listener interface {
 	WriteHeader(codecs []av.CodecData) (err error)
 	WritePacket(pkt av.Packet) (err error)
 	WriteTrailer() (err error)
-	//Reinit(sps []byte)
 }
 
 // listener: Listener Wrapper
 type listener struct {
 	Listener
-	init bool
-	eof  chan struct{}
+	// id      uint32
+	started bool
+	eof     chan struct{}
 }
 
 type conn struct {
-	rtsp      *client.Client
-	codecs    []av.CodecData
-	listeners []*listener
+	rtsp   *client.Client
+	codecs []av.CodecData
+	// listeners []*listener
+	listeners  sync.Map
+	listenerID uint32
 }
 
 func (e *Emitter) getConn(rtspURL string) (*conn, error) {
@@ -56,12 +60,14 @@ func (e *Emitter) AddListener(rtspURL string, ln Listener) (chan struct{}, error
 	}
 
 	w := &listener{
-		init:     false,
+		// id:       id,
+		started:  false,
 		Listener: ln,
 	}
-	ln.WriteHeader(c.codecs)
-	c.listeners = append(c.listeners, w)
 
+	ln.WriteHeader(c.codecs)
+	id := atomic.AddUint32(&c.listenerID, 1)
+	c.listeners.Store(id, w)
 	return w.eof, nil
 }
 
@@ -72,38 +78,43 @@ func (e *Emitter) newConn(uri string) (c *conn, err error) {
 		return nil, err
 	}
 
-	log.Infof("RTSP Connected: %s\n", uri)
+	log.Infov("RTSP New Connected", "url", uri)
 
 	c.codecs, _ = c.rtsp.Streams()
 
 	go func(c *conn) {
 		var buf bytes.Buffer
-
+		log.Infov("RTSP Start Read Packet", "url", uri)
 		for {
 			pkt, err := c.rtsp.ReadPacket()
 			if err != nil {
-				for _, ln := range c.listeners {
+				c.listeners.Range(func(key, value interface{}) bool {
+					ln := value.(*listener)
 					ln.WriteTrailer()
 					ln.eof <- struct{}{}
-				}
+					c.listeners.Delete(key)
+					return true
+				})
 
-				if err == io.EOF {
-					err = nil
-					break
+				if err != io.EOF {
+					log.Errorv("RTSP Read Packet", "error", err)
 				}
 				return
 			}
 
-			for _, ln := range c.listeners {
-				if ln.init {
+			c.listeners.Range(func(_, value interface{}) bool {
+				ln := value.(*listener)
+				if ln.started {
 					ln.WritePacket(pkt)
 				} else {
 					if pkt.IsKeyFrame {
-						ln.init = true
+						ln.started = true
 						ln.WritePacket(pkt)
 					}
 				}
-			}
+				return true
+			})
+
 			buf.Reset()
 		}
 	}(c)
