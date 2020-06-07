@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/textproto"
 	"net/url"
@@ -360,115 +359,137 @@ func (self *Client) handle401(res *Response) (err error) {
 
 	return
 }
-
-func (c *Client) findRTSP() ([]byte, []byte, error) {
+func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 	const (
 		R = iota + 1
 		T
 		S
 		Header
 		Dollar
-		LF
 	)
+	var _peek [8]byte
+	peek := _peek[0:0]
 	stat := 0
-	header := []byte("RTSP")
-	for {
-		b, err := c.brconn.ReadByte()
-		if err != nil {
-			return nil, nil, err
+
+	for i := 0; ; i++ {
+		var b byte
+		if b, err = self.brconn.ReadByte(); err != nil {
+			return
 		}
-		if stat == Header {
-			header = append(header, b)
-		}
-		log.Println(stat)
 		switch b {
 		case 'R':
 			if stat == 0 {
 				stat = R
-				continue
-			} else if stat != Dollar && stat != Header {
-				stat = 0
 			}
 		case 'T':
 			if stat == R {
 				stat = T
-				continue
-			} else if stat != Dollar && stat != Header {
-				stat = 0
 			}
 		case 'S':
 			if stat == T {
 				stat = S
-				continue
-			} else if stat != Dollar && stat != Header {
-				stat = 0
 			}
 		case 'P':
 			if stat == S {
 				stat = Header
-				continue
-			} else if stat != Dollar && stat != Header {
-				stat = 0
 			}
-		case '\n':
-			if stat != Dollar && stat != Header {
-				stat = 0
-				break
-			}
-			nb, err := c.brconn.ReadByte()
-			if err != nil {
-				return nil, nil, err
-			}
-			if nb != byte('\n') {
-				c.brconn.UnreadByte()
-				stat = Header
-				break
-			}
-			stat = LF
 		case '$':
-			if stat != Dollar && stat != Header {
+			if stat != Dollar {
 				stat = Dollar
+				peek = _peek[0:0]
 			}
 		default:
-			if stat != Dollar && stat != Header {
+			if stat != Dollar {
 				stat = 0
-				continue
+				peek = _peek[0:0]
 			}
 		}
-		if stat == LF {
-			header = append(header, []byte("\n\n")...)
-			return nil, header, nil
+
+		if false && DebugRtp {
+			fmt.Println("rtsp: findRTSP", i, b)
 		}
-		if stat == Dollar {
-			readHeader := make([]byte, 11)
-			c.brconn.Read(readHeader)
-			tcpRtpHeader := []byte("$")
-			tcpRtpHeader = append(tcpRtpHeader, readHeader...)
-			rtpPckt, err := c.readRtpPacket(tcpRtpHeader)
-			if err != nil {
-				if err == errRtpParseHeader {
-					stat = 0
-					continue
+
+		if stat != 0 {
+			peek = append(peek, b)
+		}
+		if stat == Header {
+			data = peek
+			return
+		}
+
+		if stat == Dollar && len(peek) >= 12 {
+			if DebugRtp {
+				fmt.Println("rtsp: dollar at", i, len(peek))
+			}
+			if blocklen, _, ok := self.parseBlockHeader(peek); ok {
+				left := blocklen + 4 - len(peek)
+				block = append(peek, make([]byte, left)...)
+				if _, err = io.ReadFull(self.brconn, block[len(peek):]); err != nil {
+					return
 				}
-				return nil, nil, err
+				return
 			}
-			return rtpPckt, nil, nil
+			stat = 0
+			peek = _peek[0:0]
 		}
 	}
+
+	return
 }
 
-func (c *Client) readRtpPacket(peek []byte) ([]byte, error) {
-	if blocklen, _, ok := c.parseBlockHeader(peek); ok {
-		block := make([]byte, 0)
-		left := blocklen + 4 - len(peek)
-		block = append(peek, make([]byte, left)...)
-		_, err := io.ReadFull(c.brconn, block[len(peek):])
-		if err != nil {
-			return nil, err
+func (self *Client) readLFLF() (block []byte, data []byte, err error) {
+	const (
+		LF = iota + 1
+		LFLF
+	)
+	peek := []byte{}
+	stat := 0
+	dollarpos := -1
+	lpos := 0
+	pos := 0
+
+	for {
+		var b byte
+		if b, err = self.brconn.ReadByte(); err != nil {
+			return
 		}
-		return block, nil
+		switch b {
+		case '\n':
+			if stat == 0 {
+				stat = LF
+				lpos = pos
+			} else if stat == LF {
+				if pos-lpos <= 2 {
+					stat = LFLF
+				} else {
+					lpos = pos
+				}
+			}
+		case '$':
+			dollarpos = pos
+		}
+		peek = append(peek, b)
+
+		if stat == LFLF {
+			data = peek
+			return
+		} else if dollarpos != -1 && dollarpos-pos >= 12 {
+			hdrlen := dollarpos - pos
+			start := len(peek) - hdrlen
+			if blocklen, _, ok := self.parseBlockHeader(peek[start:]); ok {
+				block = append(peek[start:], make([]byte, blocklen+4-hdrlen)...)
+				if _, err = io.ReadFull(self.brconn, block[hdrlen:]); err != nil {
+					return
+				}
+				return
+			}
+			dollarpos = -1
+		}
+
+		pos++
 	}
-	return nil, errRtpParseHeader
+
+	return
 }
 
 func (self *Client) readResp(b []byte) (res Response, err error) {
@@ -495,7 +516,14 @@ func (self *Client) poll() (res Response, err error) {
 
 	// self.conn.Timeout = self.RtspTimeout
 	for {
-		if block, headers, err = self.findRTSP(); err != nil {
+		if block, rtsp, err = self.findRTSP(); err != nil {
+			return
+		}
+		if len(block) > 0 {
+			res.Block = block
+			return
+		}
+		if block, headers, err = self.readLFLF(); err != nil {
 			return
 		}
 		if len(block) > 0 {
@@ -778,8 +806,6 @@ func (self *Client) readPacket() (pkt av.Packet, err error) {
 			return
 		}
 	}
-
-	return
 }
 
 func (self *Client) ReadPacket() (pkt av.Packet, err error) {
