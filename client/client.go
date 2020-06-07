@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/textproto"
 	"net/url"
@@ -379,6 +380,7 @@ func (c *Client) findRTSP() ([]byte, []byte, error) {
 		if stat == Header {
 			header = append(header, b)
 		}
+		log.Println(stat)
 		switch b {
 		case 'R':
 			if stat == 0 {
@@ -398,7 +400,7 @@ func (c *Client) findRTSP() ([]byte, []byte, error) {
 			if stat == T {
 				stat = S
 				continue
-			} else if stat != Dollar && stat != Header{
+			} else if stat != Dollar && stat != Header {
 				stat = 0
 			}
 		case 'P':
