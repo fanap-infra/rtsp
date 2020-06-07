@@ -85,16 +85,14 @@ func DialTimeout(uri string, timeout time.Duration) (*Client, error) {
 		URL.Host = URL.Host + ":554"
 	}
 
-	dailer := net.Dialer{Timeout: timeout}
-	conn, err := dailer.Dial("tcp", URL.Host)
-	// conn.SetDeadline(time.Now().Add(timeout))
+	conn, err := net.Dial("tcp4", URL.Host)
 	if err != nil {
 		return nil, err
 	}
 
 	self := &Client{
 		conn:   conn,
-		brconn: bufio.NewReaderSize(conn, 2048),
+		brconn: bufio.NewReaderSize(conn, 1024),
 		url:    URL,
 	}
 	return self, nil
@@ -359,7 +357,7 @@ func (self *Client) handle401(res *Response) (err error) {
 
 	return
 }
-func (self *Client) findRTSP() (block []byte, data []byte, err error) {
+func (c *Client) findRTSP() (block []byte, data []byte, err error) {
 	const (
 		R = iota + 1
 		T
@@ -367,74 +365,41 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 		Header
 		Dollar
 	)
-	var _peek [8]byte
-	peek := _peek[0:0]
-	stat := 0
+	matchString := "RTSP"
+	matchIndex := 0
 
 	for i := 0; ; i++ {
 		var b byte
-		if b, err = self.brconn.ReadByte(); err != nil {
+		if b, err = c.brconn.ReadByte(); err != nil {
 			return
 		}
-		switch b {
-		case 'R':
-			if stat == 0 {
-				stat = R
-			}
-		case 'T':
-			if stat == R {
-				stat = T
-			}
-		case 'S':
-			if stat == T {
-				stat = S
-			}
-		case 'P':
-			if stat == S {
-				stat = Header
-			}
-		case '$':
-			if stat != Dollar {
-				stat = Dollar
-				peek = _peek[0:0]
-			}
-		default:
-			if stat != Dollar {
-				stat = 0
-				peek = _peek[0:0]
-			}
+		if b == matchString[matchIndex] {
+			matchIndex++
+		} else {
+			matchIndex = 0
+		}
+		if matchIndex == len(matchString) {
+			return nil, []byte("RTSP"), nil
 		}
 
-		if false && DebugRtp {
-			fmt.Println("rtsp: findRTSP", i, b)
-		}
-
-		if stat != 0 {
-			peek = append(peek, b)
-		}
-		if stat == Header {
-			data = peek
-			return
-		}
-
-		if stat == Dollar && len(peek) >= 12 {
-			if DebugRtp {
-				fmt.Println("rtsp: dollar at", i, len(peek))
+		if b == '$' {
+			peek := []byte("$")
+			readByte := make([]byte, 11)
+			_, err = c.brconn.Read(readByte)
+			if err != nil {
+				return
 			}
-			if blocklen, _, ok := self.parseBlockHeader(peek); ok {
+			peek = append(peek, readByte...)
+			if blocklen, _, ok := c.parseBlockHeader(peek); ok {
 				left := blocklen + 4 - len(peek)
 				block = append(peek, make([]byte, left)...)
-				if _, err = io.ReadFull(self.brconn, block[len(peek):]); err != nil {
+				if _, err = io.ReadFull(c.brconn, block[len(peek):]); err != nil {
 					return
 				}
 				return
 			}
-			stat = 0
-			peek = _peek[0:0]
 		}
 	}
-
-	return
 }
 
 func (self *Client) readLFLF() (block []byte, data []byte, err error) {
