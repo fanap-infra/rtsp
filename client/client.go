@@ -357,7 +357,7 @@ func (self *Client) handle401(res *Response) (err error) {
 
 	return
 }
-func (c *Client) findRTSP() (block []byte, err error) {
+func (c *Client) findRTSP() (block []byte, header []byte, err error) {
 	const (
 		R = iota + 1
 		T
@@ -368,7 +368,7 @@ func (c *Client) findRTSP() (block []byte, err error) {
 	matchString := "RTSP"
 	matchIndex := 0
 
-	for i := 0; ; i++ {
+	for {
 		var b byte
 		if b, err = c.brconn.ReadByte(); err != nil {
 			return
@@ -379,7 +379,22 @@ func (c *Client) findRTSP() (block []byte, err error) {
 			matchIndex = 0
 		}
 		if matchIndex == len(matchString) {
-			return nil, nil
+			//TODO: may be we should check for valid $ rtp packet here
+			for {
+				lfb, _ := c.brconn.ReadByte()
+				header = append(header, lfb)
+				if lfb != byte('\n') {
+					continue
+				}
+				for i := 0; i < 3; i++ {
+					nlfb, _ := c.brconn.ReadByte()
+					header = append(header, nlfb)
+					if nlfb == byte('\n') {
+						return nil, header, nil
+					}
+				}
+
+			}
 		}
 
 		if b == '$' {
@@ -400,61 +415,6 @@ func (c *Client) findRTSP() (block []byte, err error) {
 			}
 		}
 	}
-}
-
-func (self *Client) readLFLF() (block []byte, data []byte, err error) {
-	const (
-		LF = iota + 1
-		LFLF
-	)
-	peek := []byte{}
-	stat := 0
-	dollarpos := -1
-	lpos := 0
-	pos := 0
-
-	for {
-		var b byte
-		if b, err = self.brconn.ReadByte(); err != nil {
-			return
-		}
-		switch b {
-		case '\n':
-			if stat == 0 {
-				stat = LF
-				lpos = pos
-			} else if stat == LF {
-				if pos-lpos <= 2 {
-					stat = LFLF
-				} else {
-					lpos = pos
-				}
-			}
-		case '$':
-			dollarpos = pos
-		}
-		peek = append(peek, b)
-
-		if stat == LFLF {
-			data = peek
-			return
-		} else if dollarpos != -1 && dollarpos-pos >= 12 {
-			hdrlen := dollarpos - pos
-			start := len(peek) - hdrlen
-			if blocklen, _, ok := self.parseBlockHeader(peek[start:]); ok {
-				block = append(peek[start:], make([]byte, blocklen+4-hdrlen)...)
-				if _, err = io.ReadFull(self.brconn, block[hdrlen:]); err != nil {
-					return
-				}
-				return
-			}
-			dollarpos = -1
-		}
-
-		pos++
-	}
-
-	return
 }
 
 func (self *Client) readResp(b []byte) (res Response, err error) {
@@ -478,16 +438,8 @@ func (self *Client) poll() (res Response, err error) {
 	var block []byte
 	var headers []byte
 
-	// self.conn.Timeout = self.RtspTimeout
 	for {
-		if block, err = self.findRTSP(); err != nil {
-			return
-		}
-		if len(block) > 0 {
-			res.Block = block
-			return
-		}
-		if block, headers, err = self.readLFLF(); err != nil {
+		if block, headers, err = self.findRTSP(); err != nil {
 			return
 		}
 		if len(block) > 0 {
