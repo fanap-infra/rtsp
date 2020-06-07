@@ -384,35 +384,33 @@ func (c *Client) findRTSP() ([]byte, []byte, error) {
 			if stat == 0 {
 				stat = R
 				continue
-			} else {
+			} else if stat != Dollar && stat != Header {
 				stat = 0
 			}
 		case 'T':
 			if stat == R {
 				stat = T
 				continue
-			} else {
+			} else if stat != Dollar && stat != Header {
 				stat = 0
 			}
 		case 'S':
 			if stat == T {
 				stat = S
 				continue
-			} else {
+			} else if stat != Dollar && stat != Header{
 				stat = 0
 			}
 		case 'P':
 			if stat == S {
 				stat = Header
 				continue
-			} else {
+			} else if stat != Dollar && stat != Header {
 				stat = 0
 			}
 		case '\n':
-			if stat != Header {
-				if stat != Dollar {
-					stat = 0
-				}
+			if stat != Dollar && stat != Header {
+				stat = 0
 				break
 			}
 			nb, err := c.brconn.ReadByte()
