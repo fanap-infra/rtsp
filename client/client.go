@@ -357,7 +357,7 @@ func (self *Client) handle401(res *Response) (err error) {
 
 	return
 }
-func (c *Client) findRTSP() (block []byte, data []byte, err error) {
+func (c *Client) findRTSP() (block []byte, err error) {
 	const (
 		R = iota + 1
 		T
@@ -379,7 +379,7 @@ func (c *Client) findRTSP() (block []byte, data []byte, err error) {
 			matchIndex = 0
 		}
 		if matchIndex == len(matchString) {
-			return nil, []byte("RTSP"), nil
+			return nil, nil
 		}
 
 		if b == '$' {
@@ -476,12 +476,11 @@ func (self *Client) readResp(b []byte) (res Response, err error) {
 
 func (self *Client) poll() (res Response, err error) {
 	var block []byte
-	var rtsp []byte
 	var headers []byte
 
 	// self.conn.Timeout = self.RtspTimeout
 	for {
-		if block, rtsp, err = self.findRTSP(); err != nil {
+		if block, err = self.findRTSP(); err != nil {
 			return
 		}
 		if len(block) > 0 {
@@ -495,7 +494,7 @@ func (self *Client) poll() (res Response, err error) {
 			res.Block = block
 			return
 		}
-		if res, err = self.readResp(append(rtsp, headers...)); err != nil {
+		if res, err = self.readResp(append([]byte("RTSP"), headers...)); err != nil {
 			return
 		}
 
