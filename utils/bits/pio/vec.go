@@ -38,12 +38,12 @@ func VecSliceTo(in [][]byte, out [][]byte, s int, e int) (n int) {
 	}
 
 	for e != 0 && i < len(in) {
-		left := len(in[i]) - off
+		left := len(in[i])-off
 		read := left
 		if e > 0 && e < read {
 			read = e
 		}
-		out[n] = in[i][off : off+read]
+		out[n] = in[i][off:off+read]
 		n++
 		left -= read
 		e -= read
@@ -59,3 +59,11 @@ func VecSliceTo(in [][]byte, out [][]byte, s int, e int) (n int) {
 
 	return
 }
+
+func VecSlice(in [][]byte, s int, e int) (out [][]byte) {
+	out = make([][]byte, len(in))
+	n := VecSliceTo(in, out, s, e)
+	out = out[:n]
+	return
+}
+

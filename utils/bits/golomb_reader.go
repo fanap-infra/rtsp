@@ -10,22 +10,22 @@ type GolombBitReader struct {
 	left byte
 }
 
-func (r *GolombBitReader) ReadBit() (res uint, err error) {
-	if r.left == 0 {
-		if _, err = r.R.Read(r.buf[:]); err != nil {
+func (self *GolombBitReader) ReadBit() (res uint, err error) {
+	if self.left == 0 {
+		if _, err = self.R.Read(self.buf[:]); err != nil {
 			return
 		}
-		r.left = 8
+		self.left = 8
 	}
-	r.left--
-	res = uint(r.buf[0]>>r.left) & 1
+	self.left--
+	res = uint(self.buf[0]>>self.left) & 1
 	return
 }
 
-func (r *GolombBitReader) ReadBits(n int) (res uint, err error) {
+func (self *GolombBitReader) ReadBits(n int) (res uint, err error) {
 	for i := 0; i < n; i++ {
 		var bit uint
-		if bit, err = r.ReadBit(); err != nil {
+		if bit, err = self.ReadBit(); err != nil {
 			return
 		}
 		res |= bit << uint(n-i-1)
@@ -33,11 +33,11 @@ func (r *GolombBitReader) ReadBits(n int) (res uint, err error) {
 	return
 }
 
-func (r *GolombBitReader) ReadExponentialGolombCode() (res uint, err error) {
+func (self *GolombBitReader) ReadExponentialGolombCode() (res uint, err error) {
 	i := 0
 	for {
 		var bit uint
-		if bit, err = r.ReadBit(); err != nil {
+		if bit, err = self.ReadBit(); err != nil {
 			return
 		}
 		if !(bit == 0 && i < 32) {
@@ -45,15 +45,15 @@ func (r *GolombBitReader) ReadExponentialGolombCode() (res uint, err error) {
 		}
 		i++
 	}
-	if res, err = r.ReadBits(i); err != nil {
+	if res, err = self.ReadBits(i); err != nil {
 		return
 	}
 	res += (1 << uint(i)) - 1
 	return
 }
 
-func (r *GolombBitReader) ReadSE() (res uint, err error) {
-	if res, err = r.ReadExponentialGolombCode(); err != nil {
+func (self *GolombBitReader) ReadSE() (res uint, err error) {
+	if res, err = self.ReadExponentialGolombCode(); err != nil {
 		return
 	}
 	if res&0x01 != 0 {
