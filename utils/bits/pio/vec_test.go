@@ -1,22 +1,28 @@
-
 package pio
 
 import (
-	"fmt"
+	"testing"
 )
 
-func ExampleVec() {
-	vec := [][]byte{[]byte{1,2,3}, []byte{4,5,6,7,8,9}, []byte{10,11,12,13}}
-	println(VecLen(vec))
+func TestVecSliceTo(t *testing.T) {
+	in := make([][]byte, 5)
+	for k := range in {
+		in[k] = make([]byte, 30)
+	}
+	out := make([][]byte, 5)
 
-	vec = VecSlice(vec, 1, -1)
-	fmt.Println(vec)
+	n := VecSliceTo(in, nil, 100, 100)
+	if n != 0 {
+		t.Fail()
+	}
 
-	vec = VecSlice(vec, 2, -1)
-	fmt.Println(vec)
+	n = VecSliceTo(in, out, 100, 120)
+	if n != 1 {
+		t.Fail()
+	}
 
-	vec = VecSlice(vec, 8, 8)
-	fmt.Println(vec)
-
-	// Output:
+	n = VecSliceTo(in, out, 100, 121)
+	if n != 2 {
+		t.Fail()
+	}
 }
