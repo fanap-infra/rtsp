@@ -18,9 +18,9 @@ type Emitter struct {
 
 // Listener interface
 type Listener interface {
-	WriteHeader(codecs []av.CodecData) (err error)
-	WritePacket(pkt av.Packet) (err error)
-	WriteTrailer() (err error)
+	WriteHeader(codecs []av.CodecData) (further bool)
+	WritePacket(pkt av.Packet) (further bool)
+	WriteTrailer()
 }
 
 // listener: Listener Wrapper
@@ -59,16 +59,17 @@ func (e *Emitter) AddListener(rtspURL string, ln Listener) (chan struct{}, error
 		return nil, err
 	}
 
-	w := &listener{
-		// id:       id,
-		started:  false,
-		Listener: ln,
+	if ln.WriteHeader(c.codecs) {
+		w := &listener{
+			started:  false,
+			Listener: ln,
+		}
+		id := atomic.AddUint32(&c.listenerID, 1)
+		c.listeners.Store(id, w)
+		return w.eof, nil
 	}
 
-	ln.WriteHeader(c.codecs)
-	id := atomic.AddUint32(&c.listenerID, 1)
-	c.listeners.Store(id, w)
-	return w.eof, nil
+	return nil, nil
 }
 
 func (e *Emitter) newConn(uri string) (c *conn, err error) {
@@ -87,6 +88,8 @@ func (e *Emitter) newConn(uri string) (c *conn, err error) {
 		log.Infov("RTSP Start Read Packet", "url", uri)
 		for {
 			pkt, err := c.rtsp.ReadPacket()
+			//log.Debugv("RTSP Read Packet", "time", pkt.Time, "key", pkt.IsKeyFrame) // "index", pkt.Idx, "cotime", pkt.CompositionTime
+
 			if err != nil {
 				c.listeners.Range(func(key, value interface{}) bool {
 					ln := value.(*listener)
@@ -105,7 +108,9 @@ func (e *Emitter) newConn(uri string) (c *conn, err error) {
 			c.listeners.Range(func(_, value interface{}) bool {
 				ln := value.(*listener)
 				if ln.started {
-					ln.WritePacket(pkt)
+					if ln.WritePacket(pkt) {
+
+					}
 				} else {
 					if pkt.IsKeyFrame {
 						ln.started = true
