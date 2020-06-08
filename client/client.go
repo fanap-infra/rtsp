@@ -272,6 +272,9 @@ func (c *Client) readPacket() (av.Packet, error) {
 				break
 			}
 		}
+		if len(res.Block) == 0 {
+			continue
+		}
 		pkt, ok, err := c.handleRtpPacket(res.Block)
 		if err != nil {
 			return av.Packet{}, err
