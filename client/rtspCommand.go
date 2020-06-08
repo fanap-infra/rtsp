@@ -2,7 +2,9 @@ package client
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/fanap-infra/rtsp/av"
 	"github.com/fanap-infra/rtsp/sdp"
 )
 
@@ -69,8 +71,6 @@ func (self *Client) Options() (err error) {
 	return
 }
 
-
-
 func (self *Client) Play() (err error) {
 	req := Request{
 		Method: "PLAY",
@@ -103,4 +103,113 @@ func (self *Client) Teardown() (err error) {
 
 func (self *Client) Close() (err error) {
 	return self.conn.Close()
+}
+
+func (self *Client) SetupAll() (err error) {
+	idx := []int{}
+	for i := range self.streams {
+		idx = append(idx, i)
+	}
+	return self.Setup(idx)
+}
+
+func (self *Client) Setup(idx []int) (err error) {
+	if err = self.prepare(stageDescribeDone); err != nil {
+		return
+	}
+
+	self.setupMap = make([]int, len(self.streams))
+	for i := range self.setupMap {
+		self.setupMap[i] = -1
+	}
+	self.setupIdx = idx
+
+	for i, si := range idx {
+		self.setupMap[si] = i
+
+		uri := ""
+		control := self.streams[si].Sdp.Control
+		if strings.HasPrefix(control, "rtsp://") {
+			uri = control
+		} else {
+			uri = self.url.Host + "/" + control
+		}
+		req := Request{Method: "SETUP", Uri: uri}
+		req.Header = append(req.Header, fmt.Sprintf("Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d", si*2, si*2+1))
+		if self.session != "" {
+			req.Header = append(req.Header, "Session: "+self.session)
+		}
+		if err = self.WriteRequest(req); err != nil {
+			return
+		}
+		if _, err = self.ReadResponse(); err != nil {
+			return
+		}
+	}
+
+	if self.stage == stageDescribeDone {
+		self.stage = stageSetupDone
+	}
+	return
+}
+
+func (self *Client) prepare(stage int) (err error) {
+	for self.stage < stage {
+		switch self.stage {
+		case 0:
+			if _, err = self.Describe(); err != nil {
+				return
+			}
+
+		case stageDescribeDone:
+			if err = self.SetupAll(); err != nil {
+				return
+			}
+
+		case stageSetupDone:
+			if err = self.Play(); err != nil {
+				return
+			}
+
+		case stageWaitCodecData:
+			if err = self.probe(); err != nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+func (self *Client) probe() (err error) {
+	for {
+		if self.allCodecDataReady() {
+			break
+		}
+		if _, err = self.readPacket(); err != nil {
+			return
+		}
+	}
+	self.stage = stageCodecDataDone
+	return
+}
+
+func (self *Client) allCodecDataReady() bool {
+	for _, si := range self.setupIdx {
+		stream := self.streams[si]
+		if stream.CodecData == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (self *Client) Streams() (streams []av.CodecData, err error) {
+	if err = self.prepare(stageCodecDataDone); err != nil {
+		return
+	}
+	for _, si := range self.setupIdx {
+		stream := self.streams[si]
+		streams = append(streams, stream.CodecData)
+	}
+	return
 }

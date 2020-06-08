@@ -3,7 +3,6 @@ package client
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -15,11 +14,17 @@ import (
 	"github.com/fanap-infra/rtsp/av"
 )
 
-var errCodecDataChange = fmt.Errorf("rtsp: codec data change, please call HandleCodecDataChange()")
+var errCodecDataChange = fmt.Errorf(
+	"rtsp: codec data change, please callHandleCodecDataChange()")
 var errRtpParseHeader = fmt.Errorf("can not parse rtp/tcp header")
 
+//DebugRtp enable logs for RTP
 var DebugRtp = false
+
+//DebugRtsp enable logs for RTP
 var DebugRtsp = false
+
+//SkipErrRtpBlock ...
 var SkipErrRtpBlock = false
 
 const (
@@ -102,101 +107,38 @@ func Dial(uri string) (*Client, error) {
 	return DialTimeout(uri, 0)
 }
 
-func (self *Client) allCodecDataReady() bool {
-	for _, si := range self.setupIdx {
-		stream := self.streams[si]
-		if stream.CodecData == nil {
-			return false
-		}
-	}
-	return true
-}
+// func (self *Client) SendRtpKeepalive() (err error) {
+// 	if self.RtpKeepAliveTimeout > 0 {
+// 		if self.rtpKeepaliveTimer.IsZero() {
+// 			self.rtpKeepaliveTimer = time.Now()
+// 		} else if time.Now().Sub(self.rtpKeepaliveTimer) > self.RtpKeepAliveTimeout {
+// 			self.rtpKeepaliveTimer = time.Now()
+// 			if DebugRtsp {
+// 				fmt.Println("rtp: keep alive")
+// 			}
+// 			req := Request{
+// 				Method: "OPTIONS",
+// 				Uri:    self.url.Host,
+// 			}
+// 			if err = self.WriteRequest(req); err != nil {
+// 				return
+// 			}
+// 		}
+// 	}
+// 	return
+// }
 
-func (self *Client) probe() (err error) {
-	for {
-		if self.allCodecDataReady() {
-			break
-		}
-		if _, err = self.readPacket(); err != nil {
-			return
-		}
-	}
-	self.stage = stageCodecDataDone
-	return
-}
-
-func (self *Client) prepare(stage int) (err error) {
-	for self.stage < stage {
-		switch self.stage {
-		case 0:
-			if _, err = self.Describe(); err != nil {
-				return
-			}
-
-		case stageDescribeDone:
-			if err = self.SetupAll(); err != nil {
-				return
-			}
-
-		case stageSetupDone:
-			if err = self.Play(); err != nil {
-				return
-			}
-
-		case stageWaitCodecData:
-			if err = self.probe(); err != nil {
-				return
-			}
-		}
-	}
-	return
-}
-
-func (self *Client) Streams() (streams []av.CodecData, err error) {
-	if err = self.prepare(stageCodecDataDone); err != nil {
-		return
-	}
-	for _, si := range self.setupIdx {
-		stream := self.streams[si]
-		streams = append(streams, stream.CodecData)
-	}
-	return
-}
-
-func (self *Client) SendRtpKeepalive() (err error) {
-	if self.RtpKeepAliveTimeout > 0 {
-		if self.rtpKeepaliveTimer.IsZero() {
-			self.rtpKeepaliveTimer = time.Now()
-		} else if time.Now().Sub(self.rtpKeepaliveTimer) > self.RtpKeepAliveTimeout {
-			self.rtpKeepaliveTimer = time.Now()
-			if DebugRtsp {
-				fmt.Println("rtp: keep alive")
-			}
-			req := Request{
-				Method: "OPTIONS",
-				Uri:    self.url.Host,
-			}
-			if err = self.WriteRequest(req); err != nil {
-				return
-			}
-		}
-	}
-	return
-}
-
-func (self *Client) WriteRequest(req Request) (err error) {
-	// self.conn.SetDeadline()
-	// self.conn.SetDeadline()
-	// self.conn.Timeout = self.RtspTimeout
-	self.cseq++
+//WriteRequest write RTSP request to tcp connection.
+func (c *Client) WriteRequest(req Request) error {
+	c.cseq++
 
 	buf := &bytes.Buffer{}
 
 	fmt.Fprintf(buf, "%s %s RTSP/1.0\r\n", req.Method, req.Uri)
-	fmt.Fprintf(buf, "CSeq: %d\r\n", self.cseq)
+	fmt.Fprintf(buf, "CSeq: %d\r\n", c.cseq)
 
-	if self.authHeaders != nil {
-		headers := self.authHeaders(req.Method)
+	if c.authHeaders != nil {
+		headers := c.authHeaders(req.Method)
 		for _, s := range headers {
 			io.WriteString(buf, s)
 			io.WriteString(buf, "\r\n")
@@ -206,7 +148,7 @@ func (self *Client) WriteRequest(req Request) (err error) {
 		io.WriteString(buf, s)
 		io.WriteString(buf, "\r\n")
 	}
-	for _, s := range self.Headers {
+	for _, s := range c.Headers {
 		io.WriteString(buf, s)
 		io.WriteString(buf, "\r\n")
 	}
@@ -217,48 +159,11 @@ func (self *Client) WriteRequest(req Request) (err error) {
 	if DebugRtsp {
 		fmt.Print("> ", string(bufout))
 	}
-	_, err = self.conn.Write(bufout)
+	_, err := c.conn.Write(bufout)
 	if err != nil {
-		return
+		return err
 	}
-
-	return
-}
-
-func (self *Client) parseBlockHeader(h []byte) (length int, no int, valid bool) {
-	length = int(h[2])<<8 + int(h[3])
-	no = int(h[1])
-	if no/2 >= len(self.streams) {
-		return
-	}
-
-	if no%2 == 0 { // rtp
-		if length < 8 {
-			return
-		}
-
-		// V=2
-		if h[4]&0xc0 != 0x80 {
-			return
-		}
-
-		stream := self.streams[no/2]
-		if int(h[5]&0x7f) != stream.Sdp.PayloadType {
-			return
-		}
-
-		timestamp := binary.BigEndian.Uint32(h[8:12])
-		if stream.firsttimestamp != 0 {
-			timestamp -= stream.firsttimestamp
-			if timestamp < stream.timestamp {
-				return
-			} else if timestamp-stream.timestamp > uint32(stream.timeScale()*60*60) {
-				return
-			}
-		}
-	}
-	valid = true
-	return
+	return nil
 }
 
 //parseRawTCP seperate rtsp from rtp packets.
@@ -303,8 +208,8 @@ func (c *Client) parseRawTCP() (rtpPacket []byte, rtspHeader []byte, err error) 
 				return nil, nil, err
 			}
 			peek = append(peek, readByte...)
-			if blocklen, _, ok := c.parseBlockHeader(peek); ok {
-				left := blocklen + 4 - len(peek)
+			if blocklen, _, ok := c.parseRtpTCPHeader(peek); ok {
+				left := int(blocklen) + 4 - len(peek)
 				rtpPacket = append(peek, make([]byte, left)...)
 				if _, err = io.ReadFull(c.brconn, rtpPacket[len(peek):]); err != nil {
 					return nil, nil, err
@@ -315,7 +220,8 @@ func (c *Client) parseRawTCP() (rtpPacket []byte, rtspHeader []byte, err error) 
 	}
 }
 
-func (c *Client) poll() (Response, error) {
+// pollTCPBuffer try to find RTP or RTSP packet in tcp connection bufio.
+func (c *Client) pollTCPBuffer() (Response, error) {
 	for {
 		block, headers, err := c.parseRawTCP()
 		if err != nil {
@@ -333,176 +239,73 @@ func (c *Client) poll() (Response, error) {
 	}
 }
 
-func (self *Client) ReadResponse() (res Response, err error) {
+//ReadResponse read Response from tcp connection could be rtsp or rtp packet.
+func (c *Client) ReadResponse() (Response, error) {
 	for {
-		if res, err = self.poll(); err != nil {
-			return
+		res, err := c.pollTCPBuffer()
+		if err != nil {
+			return Response{}, err
 		}
 		if res.StatusCode > 0 {
-			return
+			return res, nil
 		}
 	}
 }
 
-func (self *Client) SetupAll() (err error) {
-	idx := []int{}
-	for i := range self.streams {
-		idx = append(idx, i)
-	}
-	return self.Setup(idx)
-}
-
-func (self *Client) Setup(idx []int) (err error) {
-	if err = self.prepare(stageDescribeDone); err != nil {
-		return
-	}
-
-	self.setupMap = make([]int, len(self.streams))
-	for i := range self.setupMap {
-		self.setupMap[i] = -1
-	}
-	self.setupIdx = idx
-
-	for i, si := range idx {
-		self.setupMap[si] = i
-
-		uri := ""
-		control := self.streams[si].Sdp.Control
-		if strings.HasPrefix(control, "rtsp://") {
-			uri = control
-		} else {
-			uri = self.url.Host + "/" + control
-		}
-		req := Request{Method: "SETUP", Uri: uri}
-		req.Header = append(req.Header, fmt.Sprintf("Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d", si*2, si*2+1))
-		if self.session != "" {
-			req.Header = append(req.Header, "Session: "+self.session)
-		}
-		if err = self.WriteRequest(req); err != nil {
-			return
-		}
-		if _, err = self.ReadResponse(); err != nil {
-			return
-		}
-	}
-
-	if self.stage == stageDescribeDone {
-		self.stage = stageSetupDone
-	}
-	return
-}
-
-func (self *Client) handleBlock(block []byte) (pkt av.Packet, ok bool, err error) {
-	_, blockno, _ := self.parseBlockHeader(block)
-	if blockno%2 != 0 {
-		if DebugRtp {
-			fmt.Println("rtsp: rtcp block len", len(block)-4)
-		}
-		return
-	}
-
-	i := blockno / 2
-	if i >= len(self.streams) {
-		err = fmt.Errorf("rtsp: block no=%d invalid", blockno)
-		return
-	}
-	stream := self.streams[i]
-
-	herr := stream.handleRtpPacket(block[4:])
-	if herr != nil {
-		if !SkipErrRtpBlock {
-			err = herr
-			return
-		}
-	}
-
-	if stream.gotpkt {
-		/*
-			TODO: sync AV by rtcp NTP timestamp
-			TODO: handle timestamp overflow
-			https://tools.ietf.org/html/rfc3550
-			A receiver can then synchronize presentation of the audio and video packets by relating
-			their RTP timestamps using the timestamp pairs in RTCP SR packets.
-		*/
-		if stream.firsttimestamp == 0 {
-			stream.firsttimestamp = stream.timestamp
-		}
-		stream.timestamp -= stream.firsttimestamp
-
-		ok = true
-		pkt = stream.pkt
-		pkt.Time = time.Duration(stream.timestamp) * time.Second / time.Duration(stream.timeScale())
-		pkt.Idx = int8(self.setupMap[i])
-
-		if pkt.Time < stream.lasttime || pkt.Time-stream.lasttime > time.Minute*30 {
-			err = fmt.Errorf("rtp: time invalid stream#%d time=%v lasttime=%v", pkt.Idx, pkt.Time, stream.lasttime)
-			return
-		}
-		stream.lasttime = pkt.Time
-
-		if DebugRtp {
-			fmt.Println("rtp: pktout", pkt.Idx, pkt.Time, len(pkt.Data))
-		}
-
-		stream.pkt = av.Packet{}
-		stream.gotpkt = false
-	}
-
-	return
-}
-
-func (self *Client) readPacket() (pkt av.Packet, err error) {
-	if err = self.SendRtpKeepalive(); err != nil {
-		return
-	}
-
+//readPacket read from tcp Conn until find rtp packet
+func (c *Client) readPacket() (av.Packet, error) {
+	// if err = self.SendRtpKeepalive(); err != nil {
+	// 	return
+	// }
 	for {
 		var res Response
 		for {
-			if res, err = self.poll(); err != nil {
-				return
+			res, err := c.pollTCPBuffer()
+			if err != nil {
+				return av.Packet{}, err
 			}
 			if len(res.Block) > 0 {
+				//TODO: change len(res.Block) > 0 to isRTP maybe better approach
 				break
 			}
 		}
-
-		var ok bool
-		if pkt, ok, err = self.handleBlock(res.Block); err != nil {
-			return
+		pkt, ok, err := c.handleRtpPacket(res.Block)
+		if err != nil {
+			return av.Packet{}, err
 		}
 		if ok {
-			return
+			return pkt, nil
 		}
 	}
 }
 
-func (self *Client) ReadPacket() (pkt av.Packet, err error) {
-	if err = self.prepare(stageCodecDataDone); err != nil {
+//ReadPacket read rtp packet from tcp connection
+func (c *Client) ReadPacket() (pkt av.Packet, err error) {
+	if err = c.prepare(stageCodecDataDone); err != nil {
 		return
 	}
-	return self.readPacket()
+	return c.readPacket()
 }
 
-func (self *Client) HandleCodecDataChange() (_newcli *Client, err error) {
-	newcli := &Client{}
-	*newcli = *self
+// func (self *Client) HandleCodecDataChange() (_newcli *Client, err error) {
+// 	newcli := &Client{}
+// 	*newcli = *self
 
-	newcli.streams = []*Stream{}
-	for _, stream := range self.streams {
-		newstream := &Stream{}
-		*newstream = *stream
-		newstream.client = newcli
+// 	newcli.streams = []*Stream{}
+// 	for _, stream := range self.streams {
+// 		newstream := &Stream{}
+// 		*newstream = *stream
+// 		newstream.client = newcli
 
-		if newstream.isCodecDataChange() {
-			if err = newstream.makeCodecData(); err != nil {
-				return
-			}
-			newstream.clearCodecDataChange()
-		}
-		newcli.streams = append(newcli.streams, newstream)
-	}
+// 		if newstream.isCodecDataChange() {
+// 			if err = newstream.makeCodecData(); err != nil {
+// 				return
+// 			}
+// 			newstream.clearCodecDataChange()
+// 		}
+// 		newcli.streams = append(newcli.streams, newstream)
+// 	}
 
-	_newcli = newcli
-	return
-}
+// 	_newcli = newcli
+// 	return
+// }
