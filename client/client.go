@@ -3,21 +3,16 @@ package client
 import (
 	"bufio"
 	"bytes"
-	"crypto/md5"
-	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"net/textproto"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/fanap-infra/rtsp/av"
-	"github.com/fanap-infra/rtsp/sdp"
 )
 
 var errCodecDataChange = fmt.Errorf("rtsp: codec data change, please call HandleCodecDataChange()")
@@ -266,112 +261,15 @@ func (self *Client) parseBlockHeader(h []byte) (length int, no int, valid bool) 
 	return
 }
 
-func (self *Client) parseHeaders(b []byte) (statusCode int, headers textproto.MIMEHeader, err error) {
-	var line string
-	r := textproto.NewReader(bufio.NewReader(bytes.NewReader(b)))
-	if line, err = r.ReadLine(); err != nil {
-		err = fmt.Errorf("rtsp: header invalid")
-		return
-	}
-
-	if codes := strings.Split(line, " "); len(codes) >= 2 {
-		if statusCode, err = strconv.Atoi(codes[1]); err != nil {
-			err = fmt.Errorf("rtsp: header invalid: %s", err)
-			return
-		}
-	}
-
-	headers, _ = r.ReadMIMEHeader()
-	return
-}
-
-func (self *Client) handleResp(res *Response) (err error) {
-	if sess := res.Headers.Get("Session"); sess != "" && self.session == "" {
-		if fields := strings.Split(sess, ";"); len(fields) > 0 {
-			self.session = fields[0]
-		}
-	}
-	if res.StatusCode == 401 {
-		if err = self.handle401(res); err != nil {
-			return
-		}
-	}
-	return
-}
-
-func (self *Client) handle401(res *Response) (err error) {
-	/*
-		RTSP/1.0 401 Unauthorized
-		CSeq: 2
-		Date: Wed, May 04 2016 10:10:51 GMT
-		WWW-Authenticate: Digest realm="LIVE555 Streaming Media", nonce="c633aaf8b83127633cbe98fac1d20d87"
-	*/
-	authval := res.Headers.Get("WWW-Authenticate")
-	hdrval := strings.SplitN(authval, " ", 2)
-	var realm, nonce string
-
-	if len(hdrval) == 2 {
-		for _, field := range strings.Split(hdrval[1], ",") {
-			field = strings.Trim(field, ", ")
-			if keyval := strings.Split(field, "="); len(keyval) == 2 {
-				key := keyval[0]
-				val := strings.Trim(keyval[1], `"`)
-				switch key {
-				case "realm":
-					realm = val
-				case "nonce":
-					nonce = val
-				}
-			}
-		}
-
-		if realm != "" {
-			var username string
-			var password string
-
-			if self.url.User == nil {
-				err = fmt.Errorf("rtsp: no username")
-				return
-			}
-			username = self.url.User.Username()
-			password, _ = self.url.User.Password()
-
-			self.authHeaders = func(method string) []string {
-				var headers []string
-				if nonce == "" {
-					headers = []string{
-						fmt.Sprintf(`Authorization: Basic %s`, base64.StdEncoding.EncodeToString([]byte(username+":"+password))),
-					}
-				} else {
-					hs1 := md5hash(username + ":" + realm + ":" + password)
-					hs2 := md5hash(method + ":" + self.url.Host)
-					response := md5hash(hs1 + ":" + nonce + ":" + hs2)
-					headers = []string{fmt.Sprintf(
-						`Authorization: Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
-						username, realm, nonce, self.url.Host, response)}
-				}
-				return headers
-			}
-		}
-	}
-
-	return
-}
-func (c *Client) findRTSP() (block []byte, header []byte, err error) {
-	const (
-		R = iota + 1
-		T
-		S
-		Header
-		Dollar
-	)
+//parseRawTCP seperate rtsp from rtp packets.
+//By searching for "RTSP" string
+func (c *Client) parseRawTCP() (rtpPacket []byte, rtspHeader []byte, err error) {
 	matchString := "RTSP"
 	matchIndex := 0
-
 	for {
 		var b byte
 		if b, err = c.brconn.ReadByte(); err != nil {
-			return
+			return nil, nil, err
 		}
 		if b == matchString[matchIndex] {
 			matchIndex++
@@ -379,18 +277,18 @@ func (c *Client) findRTSP() (block []byte, header []byte, err error) {
 			matchIndex = 0
 		}
 		if matchIndex == len(matchString) {
-			//TODO: may be we should check for valid $ rtp packet here
+			//TODO: maybe we should check for valid $ rtp packet here
 			for {
 				lfb, _ := c.brconn.ReadByte()
-				header = append(header, lfb)
+				rtspHeader = append(rtspHeader, lfb)
 				if lfb != byte('\n') {
 					continue
 				}
 				for i := 0; i < 3; i++ {
 					nlfb, _ := c.brconn.ReadByte()
-					header = append(header, nlfb)
+					rtspHeader = append(rtspHeader, nlfb)
 					if nlfb == byte('\n') {
-						return nil, header, nil
+						return nil, rtspHeader, nil
 					}
 				}
 
@@ -402,55 +300,36 @@ func (c *Client) findRTSP() (block []byte, header []byte, err error) {
 			readByte := make([]byte, 11)
 			_, err = c.brconn.Read(readByte)
 			if err != nil {
-				return
+				return nil, nil, err
 			}
 			peek = append(peek, readByte...)
 			if blocklen, _, ok := c.parseBlockHeader(peek); ok {
 				left := blocklen + 4 - len(peek)
-				block = append(peek, make([]byte, left)...)
-				if _, err = io.ReadFull(c.brconn, block[len(peek):]); err != nil {
-					return
+				rtpPacket = append(peek, make([]byte, left)...)
+				if _, err = io.ReadFull(c.brconn, rtpPacket[len(peek):]); err != nil {
+					return nil, nil, err
 				}
-				return
+				return rtpPacket, nil, nil
 			}
 		}
 	}
 }
 
-func (self *Client) readResp(b []byte) (res Response, err error) {
-	if res.StatusCode, res.Headers, err = self.parseHeaders(b); err != nil {
-		return
-	}
-	res.ContentLength, _ = strconv.Atoi(res.Headers.Get("Content-Length"))
-	if res.ContentLength > 0 {
-		res.Body = make([]byte, res.ContentLength)
-		if _, err = io.ReadFull(self.brconn, res.Body); err != nil {
-			return
-		}
-	}
-	if err = self.handleResp(&res); err != nil {
-		return
-	}
-	return
-}
-
-func (self *Client) poll() (res Response, err error) {
-	var block []byte
-	var headers []byte
-
+func (c *Client) poll() (Response, error) {
 	for {
-		if block, headers, err = self.findRTSP(); err != nil {
-			return
+		block, headers, err := c.parseRawTCP()
+		if err != nil {
+			return Response{}, err
 		}
 		if len(block) > 0 {
-			res.Block = block
-			return
+			response := Response{Block: block}
+			return response, nil
 		}
-		if res, err = self.readResp(append([]byte("RTSP"), headers...)); err != nil {
-			return
+		response, err := c.readRtspResp(append([]byte("RTSP"), headers...))
+		if err != nil {
+			return Response{}, err
 		}
-
-		return
+		return response, nil
 	}
 }
 
@@ -463,7 +342,6 @@ func (self *Client) ReadResponse() (res Response, err error) {
 			return
 		}
 	}
-	return
 }
 
 func (self *Client) SetupAll() (err error) {
@@ -512,131 +390,6 @@ func (self *Client) Setup(idx []int) (err error) {
 		self.stage = stageSetupDone
 	}
 	return
-}
-
-func md5hash(s string) string {
-	h := md5.Sum([]byte(s))
-	return hex.EncodeToString(h[:])
-}
-
-func (self *Client) Describe() (streams []sdp.Media, err error) {
-	var res Response
-
-	for i := 0; i < 2; i++ {
-		req := Request{
-			Method: "DESCRIBE",
-			Uri:    self.url.Host,
-			Header: []string{"Accept: application/sdp"},
-		}
-		if err = self.WriteRequest(req); err != nil {
-			return
-		}
-		if res, err = self.ReadResponse(); err != nil {
-			return
-		}
-		if res.StatusCode == 200 {
-			break
-		}
-	}
-	if res.ContentLength == 0 || res.ContentLength != len(res.Body) {
-		err = fmt.Errorf("rtsp: Describe failed, StatusCode=%d", res.StatusCode)
-		return
-	}
-
-	body := string(res.Body)
-
-	if DebugRtsp {
-		fmt.Println("<", body)
-	}
-
-	_, medias := sdp.Parse(body)
-
-	self.streams = []*Stream{}
-	for _, media := range medias {
-		stream := &Stream{Sdp: media, client: self}
-		stream.makeCodecData()
-		self.streams = append(self.streams, stream)
-		streams = append(streams, media)
-	}
-
-	if self.stage == 0 {
-		self.stage = stageDescribeDone
-	}
-	return
-}
-
-func (self *Client) Options() (err error) {
-	req := Request{
-		Method: "OPTIONS",
-		Uri:    self.url.Host,
-	}
-	if self.session != "" {
-		req.Header = append(req.Header, "Session: "+self.session)
-	}
-	if err = self.WriteRequest(req); err != nil {
-		return
-	}
-	if _, err = self.ReadResponse(); err != nil {
-		return
-	}
-	return
-}
-
-func (self *Client) HandleCodecDataChange() (_newcli *Client, err error) {
-	newcli := &Client{}
-	*newcli = *self
-
-	newcli.streams = []*Stream{}
-	for _, stream := range self.streams {
-		newstream := &Stream{}
-		*newstream = *stream
-		newstream.client = newcli
-
-		if newstream.isCodecDataChange() {
-			if err = newstream.makeCodecData(); err != nil {
-				return
-			}
-			newstream.clearCodecDataChange()
-		}
-		newcli.streams = append(newcli.streams, newstream)
-	}
-
-	_newcli = newcli
-	return
-}
-
-func (self *Client) Play() (err error) {
-	req := Request{
-		Method: "PLAY",
-		Uri:    self.url.Host,
-	}
-	req.Header = append(req.Header, "Session: "+self.session)
-	if err = self.WriteRequest(req); err != nil {
-		return
-	}
-
-	if self.allCodecDataReady() {
-		self.stage = stageCodecDataDone
-	} else {
-		self.stage = stageWaitCodecData
-	}
-	return
-}
-
-func (self *Client) Teardown() (err error) {
-	req := Request{
-		Method: "TEARDOWN",
-		Uri:    self.url.Host,
-	}
-	req.Header = append(req.Header, "Session: "+self.session)
-	if err = self.WriteRequest(req); err != nil {
-		return
-	}
-	return
-}
-
-func (self *Client) Close() (err error) {
-	return self.conn.Close()
 }
 
 func (self *Client) handleBlock(block []byte) (pkt av.Packet, ok bool, err error) {
@@ -729,4 +482,27 @@ func (self *Client) ReadPacket() (pkt av.Packet, err error) {
 		return
 	}
 	return self.readPacket()
+}
+
+func (self *Client) HandleCodecDataChange() (_newcli *Client, err error) {
+	newcli := &Client{}
+	*newcli = *self
+
+	newcli.streams = []*Stream{}
+	for _, stream := range self.streams {
+		newstream := &Stream{}
+		*newstream = *stream
+		newstream.client = newcli
+
+		if newstream.isCodecDataChange() {
+			if err = newstream.makeCodecData(); err != nil {
+				return
+			}
+			newstream.clearCodecDataChange()
+		}
+		newcli.streams = append(newcli.streams, newstream)
+	}
+
+	_newcli = newcli
+	return
 }
