@@ -202,10 +202,13 @@ func (c *Client) parseRawTCP() (rtpPacket []byte, rtspHeader []byte, err error) 
 
 		if b == '$' {
 			peek := []byte("$")
-			readByte := make([]byte, 11)
-			_, err = c.brconn.Read(readByte)
-			if err != nil {
-				return nil, nil, err
+			readByte := make([]byte, 0)
+			for i := 0; i < 11; i++ {
+				byt, err := c.brconn.ReadByte()
+				if err != nil {
+					return nil, nil, err
+				}
+				readByte = append(readByte, byt)
 			}
 			peek = append(peek, readByte...)
 			if blocklen, _, ok := c.parseRtpTCPHeader(peek); ok {
