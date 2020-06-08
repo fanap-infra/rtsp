@@ -16,13 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fanap-infra/log"
 	"github.com/fanap-infra/rtsp/av"
 	"github.com/fanap-infra/rtsp/codec"
 	"github.com/fanap-infra/rtsp/codec/aacparser"
 	"github.com/fanap-infra/rtsp/codec/h264parser"
 	"github.com/fanap-infra/rtsp/sdp"
 	"github.com/fanap-infra/rtsp/utils/bits/pio"
-	"gitlab.com/behnama2/log"
 )
 
 var ErrCodecDataChange = fmt.Errorf("rtsp: codec data change, please call HandleCodecDataChange()")

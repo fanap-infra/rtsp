@@ -6,9 +6,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/fanap-infra/log"
 	"github.com/fanap-infra/rtsp/av"
 	"github.com/fanap-infra/rtsp/client"
-	"gitlab.com/behnama2/log"
 )
 
 // Emitter send RTSP packet to listeners
