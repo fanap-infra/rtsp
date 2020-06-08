@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/fanap-infra/rtsp/av"
 )
@@ -47,14 +48,14 @@ func (self *Client) handleRtpPacket(block []byte) (pkt av.Packet, ok bool, err e
 
 	ok = true
 	pkt = stream.pkt
-	// pkt.Time = time.Duration(stream.timestamp) * time.Second / time.Duration(stream.timeScale())
+	pkt.Time = time.Duration(stream.timestamp) * time.Second / time.Duration(stream.timeScale())
 	// pkt.Idx = int8(self.setupMap[i])
 
-	// if pkt.Time < stream.lasttime || pkt.Time-stream.lasttime > time.Minute*30 {
-	// 	err = fmt.Errorf("rtp: time invalid stream#%d time=%v lasttime=%v", pkt.Idx, pkt.Time, stream.lasttime)
-	// 	return
-	// }
-	// stream.lasttime = pkt.Time
+	if pkt.Time < stream.lasttime || pkt.Time-stream.lasttime > time.Minute*30 {
+		err = fmt.Errorf("rtp: time invalid stream# time=%v lasttime=%v", pkt.Time, stream.lasttime)
+		return
+	}
+	stream.lasttime = pkt.Time
 
 	// if DebugRtp {
 	// 	fmt.Println("rtp: pktout", pkt.Idx, pkt.Time, len(pkt.Data))

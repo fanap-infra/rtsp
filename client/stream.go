@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/fanap-infra/rtsp/av"
 	"github.com/fanap-infra/rtsp/codec"
@@ -31,7 +32,7 @@ type Stream struct {
 	timestamp uint32
 	// firsttimestamp uint32 //TODO: can we remove firsttimestamp
 
-	// lasttime time.Duration //TODO: can we remove lasttime
+	lasttime time.Duration //TODO: can we remove lasttime
 }
 
 func (self *Stream) clearCodecDataChange() {

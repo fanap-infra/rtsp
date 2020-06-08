@@ -230,7 +230,7 @@ type Packet struct {
 	IsKeyFrame bool // video packet is key frame
 	// Idx             int8 // stream index in container format
 	CompositionTime time.Duration // packet presentation time minus decode time for H264 B-Frame
-	// Time time.Duration // packet decode time
+	Time time.Duration // packet decode time
 	Data []byte // packet data
 }
 
