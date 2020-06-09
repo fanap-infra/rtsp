@@ -55,9 +55,8 @@ type Client struct {
 	authHeaders func(method string) []string
 
 	url         *url.URL
-	conn        *connWithTimeout
+	conn        net.Conn
 	brconn      *bufio.Reader
-	requestUri  string
 	cseq        uint
 	streams     []*Stream
 	streamsintf []av.CodecData
@@ -99,13 +98,12 @@ func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
 	u2 := *URL
 	u2.User = nil
 
-	connt := &connWithTimeout{Conn: conn}
+	// connt := &connWithTimeout{Conn: conn}
 
 	self = &Client{
-		conn:       connt,
-		brconn:     bufio.NewReaderSize(connt, 256),
-		url:        URL,
-		requestUri: u2.String(),
+		conn:   conn,
+		brconn: bufio.NewReaderSize(conn, 256),
+		url:    URL,
 	}
 	return
 }
@@ -207,7 +205,7 @@ func (self *Client) SendRtpKeepalive() (err error) {
 }
 
 func (self *Client) WriteRequest(req Request) (err error) {
-	self.conn.Timeout = self.RtspTimeout
+	// self.conn.Timeout = self.RtspTimeout
 	self.cseq++
 
 	buf := &bytes.Buffer{}
@@ -237,7 +235,6 @@ func (self *Client) WriteRequest(req Request) (err error) {
 	if DebugRtsp {
 		fmt.Print("> ", string(bufout))
 	}
-
 	if _, err = self.conn.Write(bufout); err != nil {
 		return
 	}
@@ -1133,40 +1130,6 @@ func (self *Stream) handleRtpPacket(packet []byte) (err error) {
 	}
 
 	return
-}
-
-func (self *Client) Play() (err error) {
-	req := Request{
-		Method: "PLAY",
-		Uri:    trimURLUser(self.url),
-	}
-	req.Header = append(req.Header, "Session: "+self.session)
-	if err = self.WriteRequest(req); err != nil {
-		return
-	}
-
-	if self.allCodecDataReady() {
-		self.stage = stageCodecDataDone
-	} else {
-		self.stage = stageWaitCodecData
-	}
-	return
-}
-
-func (self *Client) Teardown() (err error) {
-	req := Request{
-		Method: "TEARDOWN",
-		Uri:    trimURLUser(self.url),
-	}
-	req.Header = append(req.Header, "Session: "+self.session)
-	if err = self.WriteRequest(req); err != nil {
-		return
-	}
-	return
-}
-
-func (self *Client) Close() (err error) {
-	return self.conn.Conn.Close()
 }
 
 func (self *Client) handleBlock(block []byte) (pkt av.Packet, ok bool, err error) {
