@@ -471,61 +471,6 @@ func (c *Client) findRTSP() (block []byte, header []byte, err error) {
 	}
 }
 
-func (self *Client) readLFLF() (block []byte, data []byte, err error) {
-	const (
-		LF = iota + 1
-		LFLF
-	)
-	peek := []byte{}
-	stat := 0
-	dollarpos := -1
-	lpos := 0
-	pos := 0
-
-	for {
-		var b byte
-		if b, err = self.brconn.ReadByte(); err != nil {
-			return
-		}
-		switch b {
-		case '\n':
-			if stat == 0 {
-				stat = LF
-				lpos = pos
-			} else if stat == LF {
-				if pos-lpos <= 2 {
-					stat = LFLF
-				} else {
-					lpos = pos
-				}
-			}
-		case '$':
-			dollarpos = pos
-		}
-		peek = append(peek, b)
-
-		if stat == LFLF {
-			data = peek
-			return
-		} else if dollarpos != -1 && dollarpos-pos >= 12 {
-			hdrlen := dollarpos - pos
-			start := len(peek) - hdrlen
-			if blocklen, _, ok := self.parseBlockHeader(peek[start:]); ok {
-				block = append(peek[start:], make([]byte, blocklen+4-hdrlen)...)
-				if _, err = io.ReadFull(self.brconn, block[hdrlen:]); err != nil {
-					return
-				}
-				return
-			}
-			dollarpos = -1
-		}
-
-		pos++
-	}
-
-	return
-}
-
 func (self *Client) readResp(b []byte) (res Response, err error) {
 	if res.StatusCode, res.Headers, err = self.parseHeaders(b); err != nil {
 		return
