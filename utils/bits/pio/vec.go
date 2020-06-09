@@ -59,10 +59,3 @@ func VecSliceTo(in [][]byte, out [][]byte, s int, e int) (n int) {
 
 	return
 }
-
-func VecSlice(in [][]byte, s int, e int) (out [][]byte) {
-	out = make([][]byte, len(in))
-	n := VecSliceTo(in, out, s, e)
-	out = out[:n]
-	return
-}

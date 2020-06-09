@@ -30,6 +30,9 @@ func (suite *TestSuite) TestReadPacket() {
 	if err != nil {
 		suite.Fail("Open tes.raw failed", err.Error())
 	}
+	if len(pkt.Data) < 10000 {
+		suite.Fail("Small packet")
+	}
 	expected := make([]byte, len(pkt.Data))
 	n, err := file.Read(expected)
 	if err != nil {
