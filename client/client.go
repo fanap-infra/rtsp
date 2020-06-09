@@ -3,7 +3,6 @@ package client
 import (
 	"bufio"
 	"bytes"
-	"crypto/md5"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -20,7 +19,6 @@ import (
 	"github.com/fanap-infra/rtsp/codec"
 	"github.com/fanap-infra/rtsp/codec/aacparser"
 	"github.com/fanap-infra/rtsp/codec/h264parser"
-	"github.com/fanap-infra/rtsp/sdp"
 	"github.com/fanap-infra/rtsp/utils/bits/pio"
 	"gitlab.com/behnama2/log"
 )
@@ -66,7 +64,7 @@ type Client struct {
 
 type Request struct {
 	Header []string
-	Uri    string
+	URI    string
 	Method string
 }
 
@@ -180,65 +178,6 @@ func (self *Client) Streams() (streams []av.CodecData, err error) {
 		stream := self.streams[si]
 		streams = append(streams, stream.CodecData)
 	}
-	return
-}
-
-func (self *Client) SendRtpKeepalive() (err error) {
-	if self.RtpKeepAliveTimeout > 0 {
-		if self.rtpKeepaliveTimer.IsZero() {
-			self.rtpKeepaliveTimer = time.Now()
-		} else if time.Now().Sub(self.rtpKeepaliveTimer) > self.RtpKeepAliveTimeout {
-			self.rtpKeepaliveTimer = time.Now()
-			if DebugRtsp {
-				fmt.Println("rtp: keep alive")
-			}
-			req := Request{
-				Method: "OPTIONS",
-				Uri:    trimURLUser(self.url),
-			}
-			if err = self.WriteRequest(req); err != nil {
-				return
-			}
-		}
-	}
-	return
-}
-
-func (self *Client) WriteRequest(req Request) (err error) {
-	// self.conn.Timeout = self.RtspTimeout
-	self.cseq++
-
-	buf := &bytes.Buffer{}
-
-	fmt.Fprintf(buf, "%s %s RTSP/1.0\r\n", req.Method, req.Uri)
-	fmt.Fprintf(buf, "CSeq: %d\r\n", self.cseq)
-
-	if self.authHeaders != nil {
-		headers := self.authHeaders(req.Method)
-		for _, s := range headers {
-			io.WriteString(buf, s)
-			io.WriteString(buf, "\r\n")
-		}
-	}
-	for _, s := range req.Header {
-		io.WriteString(buf, s)
-		io.WriteString(buf, "\r\n")
-	}
-	for _, s := range self.Headers {
-		io.WriteString(buf, s)
-		io.WriteString(buf, "\r\n")
-	}
-	io.WriteString(buf, "\r\n")
-
-	bufout := buf.Bytes()
-
-	if DebugRtsp {
-		fmt.Print("> ", string(bufout))
-	}
-	if _, err = self.conn.Write(bufout); err != nil {
-		return
-	}
-
 	return
 }
 
@@ -518,122 +457,6 @@ func (self *Client) ReadResponse() (res Response, err error) {
 		if res.StatusCode > 0 {
 			return
 		}
-	}
-	return
-}
-
-func (self *Client) SetupAll() (err error) {
-	idx := []int{}
-	for i := range self.streams {
-		idx = append(idx, i)
-	}
-	return self.Setup(idx)
-}
-
-func (self *Client) Setup(idx []int) (err error) {
-	if err = self.prepare(stageDescribeDone); err != nil {
-		return
-	}
-
-	self.setupMap = make([]int, len(self.streams))
-	for i := range self.setupMap {
-		self.setupMap[i] = -1
-	}
-	self.setupIdx = idx
-
-	for i, si := range idx {
-		self.setupMap[si] = i
-
-		uri := ""
-		control := self.streams[si].Sdp.Control
-		if strings.HasPrefix(control, "rtsp://") {
-			uri = control
-		} else {
-			uri = trimURLUser(self.url) + "/" + control
-		}
-		req := Request{Method: "SETUP", Uri: uri}
-		req.Header = append(req.Header, fmt.Sprintf("Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d", si*2, si*2+1))
-		if self.session != "" {
-			req.Header = append(req.Header, "Session: "+self.session)
-		}
-		if err = self.WriteRequest(req); err != nil {
-			return
-		}
-		if _, err = self.ReadResponse(); err != nil {
-			return
-		}
-	}
-
-	if self.stage == stageDescribeDone {
-		self.stage = stageSetupDone
-	}
-	return
-}
-
-func md5hash(s string) string {
-	h := md5.Sum([]byte(s))
-	return hex.EncodeToString(h[:])
-}
-
-func (self *Client) Describe() (streams []sdp.Media, err error) {
-	var res Response
-
-	for i := 0; i < 2; i++ {
-		req := Request{
-			Method: "DESCRIBE",
-			Uri:    trimURLUser(self.url),
-			Header: []string{"Accept: application/sdp"},
-		}
-		if err = self.WriteRequest(req); err != nil {
-			return
-		}
-		if res, err = self.ReadResponse(); err != nil {
-			return
-		}
-		if res.StatusCode == 200 {
-			break
-		}
-	}
-	if res.ContentLength == 0 || res.ContentLength != len(res.Body) {
-		err = fmt.Errorf("rtsp: Describe failed, StatusCode=%d", res.StatusCode)
-		return
-	}
-
-	body := string(res.Body)
-
-	if DebugRtsp {
-		fmt.Println("<", body)
-	}
-
-	_, medias := sdp.Parse(body)
-
-	self.streams = []*Stream{}
-	for _, media := range medias {
-		stream := &Stream{Sdp: media, client: self}
-		stream.makeCodecData()
-		self.streams = append(self.streams, stream)
-		streams = append(streams, media)
-	}
-
-	if self.stage == 0 {
-		self.stage = stageDescribeDone
-	}
-	return
-}
-
-func (self *Client) Options() (err error) {
-	req := Request{
-		Method: "OPTIONS",
-		Uri:    trimURLUser(self.url),
-	}
-	if self.session != "" {
-		req.Header = append(req.Header, "Session: "+self.session)
-	}
-	if err = self.WriteRequest(req); err != nil {
-		return
-	}
-	if _, err = self.ReadResponse(); err != nil {
-		return
 	}
 	return
 }
@@ -1137,9 +960,6 @@ func (self *Client) handleBlock(block []byte) (pkt av.Packet, ok bool, err error
 }
 
 func (self *Client) readPacket() (pkt av.Packet, err error) {
-	if err = self.SendRtpKeepalive(); err != nil {
-		return
-	}
 
 	for {
 		var res Response
