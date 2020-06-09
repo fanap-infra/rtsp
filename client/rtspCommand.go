@@ -198,3 +198,53 @@ func md5hash(s string) string {
 	h := md5.Sum([]byte(s))
 	return hex.EncodeToString(h[:])
 }
+
+func (self *Client) allCodecDataReady() bool {
+	for _, si := range self.setupIdx {
+		stream := self.streams[si]
+		if stream.CodecData == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (self *Client) probe() (err error) {
+	for {
+		if self.allCodecDataReady() {
+			break
+		}
+		if _, err = self.readPacket(); err != nil {
+			return
+		}
+	}
+	self.stage = stageCodecDataDone
+	return
+}
+
+func (self *Client) prepare(stage int) (err error) {
+	for self.stage < stage {
+		switch self.stage {
+		case 0:
+			if _, err = self.Describe(); err != nil {
+				return
+			}
+
+		case stageDescribeDone:
+			if err = self.SetupAll(); err != nil {
+				return
+			}
+
+		case stageSetupDone:
+			if err = self.Play(); err != nil {
+				return
+			}
+
+		case stageWaitCodecData:
+			if err = self.probe(); err != nil {
+				return
+			}
+		}
+	}
+	return
+}
