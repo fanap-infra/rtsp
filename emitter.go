@@ -6,8 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/client"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/client"
 	"gitlab.com/behnama2/log"
 )
 

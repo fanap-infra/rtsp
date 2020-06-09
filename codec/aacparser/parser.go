@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/utils/bits"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/utils/bits"
 )
 
 // copied from libavcodec/mpeg4audio.h

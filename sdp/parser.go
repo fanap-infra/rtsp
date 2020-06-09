@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/daneshvar/rtsp/av"
+	"github.com/fanap-infra/rtsp/av"
 )
 
 type Session struct {

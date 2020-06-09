@@ -3,8 +3,8 @@ package codec
 import (
 	"time"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/codec/fake"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/codec/fake"
 )
 
 type PCMUCodecData struct {

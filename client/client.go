@@ -16,12 +16,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daneshvar/rtsp/av"
-	"github.com/daneshvar/rtsp/codec"
-	"github.com/daneshvar/rtsp/codec/aacparser"
-	"github.com/daneshvar/rtsp/codec/h264parser"
-	"github.com/daneshvar/rtsp/sdp"
-	"github.com/daneshvar/rtsp/utils/bits/pio"
+	"github.com/fanap-infra/rtsp/av"
+	"github.com/fanap-infra/rtsp/codec"
+	"github.com/fanap-infra/rtsp/codec/aacparser"
+	"github.com/fanap-infra/rtsp/codec/h264parser"
+	"github.com/fanap-infra/rtsp/sdp"
+	"github.com/fanap-infra/rtsp/utils/bits/pio"
 	"gitlab.com/behnama2/log"
 )
 
@@ -422,83 +422,57 @@ func (self *Client) handle401(res *Response) (err error) {
 
 	return
 }
+func (c *Client) findRTSP() (block []byte, header []byte, err error) {
+	matchString := "RTSP"
+	matchIndex := 0
 
-func (self *Client) findRTSP() (block []byte, data []byte, err error) {
-	const (
-		R = iota + 1
-		T
-		S
-		Header
-		Dollar
-	)
-	var _peek [8]byte
-	peek := _peek[0:0]
-	stat := 0
-
-	for i := 0; ; i++ {
+	for {
 		var b byte
-		if b, err = self.brconn.ReadByte(); err != nil {
+		if b, err = c.brconn.ReadByte(); err != nil {
 			return
 		}
-		switch b {
-		case 'R':
-			if stat == 0 {
-				stat = R
-			}
-		case 'T':
-			if stat == R {
-				stat = T
-			}
-		case 'S':
-			if stat == T {
-				stat = S
-			}
-		case 'P':
-			if stat == S {
-				stat = Header
-			}
-		case '$':
-			if stat != Dollar {
-				stat = Dollar
-				peek = _peek[0:0]
-			}
-		default:
-			if stat != Dollar {
-				stat = 0
-				peek = _peek[0:0]
+		if b == matchString[matchIndex] {
+			matchIndex++
+		} else {
+			matchIndex = 0
+		}
+		if matchIndex == len(matchString) {
+			//TODO: may be we should check for valid $ rtp packet here
+			for {
+				lfb, _ := c.brconn.ReadByte()
+				header = append(header, lfb)
+				if lfb != byte('\n') {
+					continue
+				}
+				for i := 0; i < 3; i++ {
+					nlfb, _ := c.brconn.ReadByte()
+					header = append(header, nlfb)
+					if nlfb == byte('\n') {
+						return nil, header, nil
+					}
+				}
+
 			}
 		}
 
-		if false && self.DebugRtp {
-			fmt.Println("rtsp: findRTSP", i, b)
-		}
-
-		if stat != 0 {
-			peek = append(peek, b)
-		}
-		if stat == Header {
-			data = peek
-			return
-		}
-
-		if stat == Dollar && len(peek) >= 12 {
-			if self.DebugRtp {
-				fmt.Println("rtsp: dollar at", i, len(peek))
+		if b == '$' {
+			peek := []byte("$")
+			readByte := make([]byte, 11)
+			_, err = c.brconn.Read(readByte)
+			if err != nil {
+				return
 			}
-			if blocklen, _, ok := self.parseBlockHeader(peek); ok {
+			peek = append(peek, readByte...)
+			if blocklen, _, ok := c.parseBlockHeader(peek); ok {
 				left := blocklen + 4 - len(peek)
 				block = append(peek, make([]byte, left)...)
-				if _, err = io.ReadFull(self.brconn, block[len(peek):]); err != nil {
+				if _, err = io.ReadFull(c.brconn, block[len(peek):]); err != nil {
 					return
 				}
 				return
 			}
-			stat = 0
-			peek = _peek[0:0]
 		}
 	}
-
-	return
 }
 
 func (self *Client) readLFLF() (block []byte, data []byte, err error) {
@@ -578,30 +552,21 @@ func (self *Client) poll() (res Response, err error) {
 	var rtsp []byte
 	var headers []byte
 
-	self.conn.Timeout = self.RtspTimeout
 	for {
-		if block, rtsp, err = self.findRTSP(); err != nil {
+		if block, headers, err = self.findRTSP(); err != nil {
 			return
 		}
 		if len(block) > 0 {
 			res.Block = block
 			return
-		} else {
-			if block, headers, err = self.readLFLF(); err != nil {
-				return
-			}
-			if len(block) > 0 {
-				res.Block = block
-				return
-			}
-			if res, err = self.readResp(append(rtsp, headers...)); err != nil {
-				return
-			}
 		}
+		if res, err = self.readResp(append(rtsp, headers...)); err != nil {
+			return
+		}
+
 		return
 	}
 
-	return
 }
 
 func (self *Client) ReadResponse() (res Response, err error) {

@@ -1,0 +1,6 @@
+
+fmt:
+	@go fmt ./...
+
+unit-test:
+	@go test -count=1 ./...
