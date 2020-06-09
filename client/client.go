@@ -118,6 +118,12 @@ func Dial(uri string) (self *Client, err error) {
 	return DialTimeout(uri, 0)
 }
 
+func trimURLUser(url *url.URL) string {
+	newURL := url
+	newURL.User = nil
+	return newURL.String()
+}
+
 func (self *Client) allCodecDataReady() bool {
 	for _, si := range self.setupIdx {
 		stream := self.streams[si]
@@ -190,7 +196,7 @@ func (self *Client) SendRtpKeepalive() (err error) {
 			}
 			req := Request{
 				Method: "OPTIONS",
-				Uri:    self.requestUri,
+				Uri:    trimURLUser(self.url),
 			}
 			if err = self.WriteRequest(req); err != nil {
 				return
@@ -402,11 +408,11 @@ func (self *Client) handle401(res *Response) (err error) {
 					}
 				} else {
 					hs1 := md5hash(username + ":" + realm + ":" + password)
-					hs2 := md5hash(method + ":" + self.requestUri)
+					hs2 := md5hash(method + ":" + trimURLUser(self.url))
 					response := md5hash(hs1 + ":" + nonce + ":" + hs2)
 					headers = []string{fmt.Sprintf(
 						`Authorization: Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
-						username, realm, nonce, self.requestUri, response)}
+						username, realm, nonce, trimURLUser(self.url), response)}
 				}
 				return headers
 			}
@@ -601,7 +607,7 @@ func (self *Client) Setup(idx []int) (err error) {
 		if strings.HasPrefix(control, "rtsp://") {
 			uri = control
 		} else {
-			uri = self.requestUri + "/" + control
+			uri = trimURLUser(self.url) + "/" + control
 		}
 		req := Request{Method: "SETUP", Uri: uri}
 		req.Header = append(req.Header, fmt.Sprintf("Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d", si*2, si*2+1))
@@ -633,7 +639,7 @@ func (self *Client) Describe() (streams []sdp.Media, err error) {
 	for i := 0; i < 2; i++ {
 		req := Request{
 			Method: "DESCRIBE",
-			Uri:    self.requestUri,
+			Uri:    trimURLUser(self.url),
 			Header: []string{"Accept: application/sdp"},
 		}
 		if err = self.WriteRequest(req); err != nil {
@@ -676,7 +682,7 @@ func (self *Client) Describe() (streams []sdp.Media, err error) {
 func (self *Client) Options() (err error) {
 	req := Request{
 		Method: "OPTIONS",
-		Uri:    self.requestUri,
+		Uri:    trimURLUser(self.url),
 	}
 	if self.session != "" {
 		req.Header = append(req.Header, "Session: "+self.session)
@@ -1132,7 +1138,7 @@ func (self *Stream) handleRtpPacket(packet []byte) (err error) {
 func (self *Client) Play() (err error) {
 	req := Request{
 		Method: "PLAY",
-		Uri:    self.requestUri,
+		Uri:    trimURLUser(self.url),
 	}
 	req.Header = append(req.Header, "Session: "+self.session)
 	if err = self.WriteRequest(req); err != nil {
@@ -1150,7 +1156,7 @@ func (self *Client) Play() (err error) {
 func (self *Client) Teardown() (err error) {
 	req := Request{
 		Method: "TEARDOWN",
-		Uri:    self.requestUri,
+		Uri:    trimURLUser(self.url),
 	}
 	req.Header = append(req.Header, "Session: "+self.session)
 	if err = self.WriteRequest(req); err != nil {
