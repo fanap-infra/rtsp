@@ -35,8 +35,62 @@ type conn struct {
 	rtsp   *client.Client
 	codecs []av.CodecData
 	// listeners []*listener
-	listeners  sync.Map
-	listenerID uint32
+	listeners   sync.Map
+	listenersID uint32
+}
+
+func (c *conn) closeListener(ln *listener, id interface{}) {
+	ln.WriteTrailer()
+	ln.eof <- struct{}{}
+	c.listeners.Delete(id)
+
+	log.Debugv("RTSP Close Listener", "id", id)
+}
+
+func (c *conn) writePacket(ln *listener, pkt av.Packet, id interface{}) {
+	if !ln.WritePacket(pkt) {
+		c.closeListener(ln, id)
+	}
+}
+
+func (c *conn) run() {
+	var buf bytes.Buffer
+	// log.Infov("RTSP Start Read Packet", "url", uri)
+	for {
+		pkt, err := c.rtsp.ReadPacket()
+		//log.Debugv("RTSP Read Packet", "time", pkt.Time, "key", pkt.IsKeyFrame) // "index", pkt.Idx, "cotime", pkt.CompositionTime
+
+		if err != nil {
+			c.listeners.Range(func(key, value interface{}) bool {
+				c.closeListener(value.(*listener), key)
+				return true
+			})
+
+			if err != io.EOF {
+				log.Errorv("RTSP Read Packet", "error", err)
+			}
+			return
+		}
+
+		c.listeners.Range(func(key, value interface{}) bool {
+			ln := value.(*listener)
+
+			go func(ln *listener, pkt av.Packet, id interface{}) {
+				if ln.started {
+					c.writePacket(ln, pkt, key)
+				} else {
+					if pkt.IsKeyFrame {
+						ln.started = true
+						c.writePacket(ln, pkt, key)
+					}
+				}
+			}(ln, pkt, key)
+
+			return true
+		})
+
+		buf.Reset()
+	}
 }
 
 func (e *Emitter) getConn(rtspURL string) (*conn, error) {
@@ -64,8 +118,9 @@ func (e *Emitter) AddListener(rtspURL string, ln Listener) (chan struct{}, error
 			started:  false,
 			Listener: ln,
 		}
-		id := atomic.AddUint32(&c.listenerID, 1)
+		id := atomic.AddUint32(&c.listenersID, 1)
 		c.listeners.Store(id, w)
+		log.Debugv("RTSP Add Listener", "id", id)
 		return w.eof, nil
 	}
 
@@ -80,50 +135,8 @@ func (e *Emitter) newConn(uri string) (c *conn, err error) {
 	}
 
 	log.Infov("RTSP New Connected", "url", uri)
-
 	c.codecs, _ = c.rtsp.Streams()
-
-	go func(c *conn) {
-		var buf bytes.Buffer
-		log.Infov("RTSP Start Read Packet", "url", uri)
-		for {
-			pkt, err := c.rtsp.ReadPacket()
-			//log.Debugv("RTSP Read Packet", "time", pkt.Time, "key", pkt.IsKeyFrame) // "index", pkt.Idx, "cotime", pkt.CompositionTime
-
-			if err != nil {
-				c.listeners.Range(func(key, value interface{}) bool {
-					ln := value.(*listener)
-					ln.WriteTrailer()
-					ln.eof <- struct{}{}
-					c.listeners.Delete(key)
-					return true
-				})
-
-				if err != io.EOF {
-					log.Errorv("RTSP Read Packet", "error", err)
-				}
-				return
-			}
-
-			c.listeners.Range(func(_, value interface{}) bool {
-				ln := value.(*listener)
-				if ln.started {
-					if ln.WritePacket(pkt) {
-
-					}
-				} else {
-					if pkt.IsKeyFrame {
-						ln.started = true
-						ln.WritePacket(pkt)
-					}
-				}
-				return true
-			})
-
-			buf.Reset()
-		}
-	}(c)
-
+	go c.run()
 	return c, nil
 }
 
