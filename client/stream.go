@@ -67,7 +67,7 @@ func (self *Stream) makeCodecData() (err error) {
 		case av.H264:
 			for _, nalu := range media.SpropParameterSets {
 				if len(nalu) > 0 {
-					self.handleH264Payload(0, nalu)
+					handleH264Payload(self, 0, nalu)
 				}
 			}
 
@@ -75,7 +75,7 @@ func (self *Stream) makeCodecData() (err error) {
 				if nalus, typ := h264parser.SplitNALUs(media.Config); typ != h264parser.NALU_RAW {
 					for _, nalu := range nalus {
 						if len(nalu) > 0 {
-							self.handleH264Payload(0, nalu)
+							handleH264Payload(self, 0, nalu)
 						}
 					}
 				}
@@ -118,13 +118,13 @@ func (self *Stream) makeCodecData() (err error) {
 	return
 }
 
-func (self *Stream) handleBuggyAnnexbH264Packet(timestamp uint32, packet []byte) (isBuggy bool, err error) {
+func handleBuggyAnnexbH264Packet(self *Stream, timestamp uint32, packet []byte) (isBuggy bool, err error) {
 	if len(packet) >= 4 && packet[0] == 0 && packet[1] == 0 && packet[2] == 0 && packet[3] == 1 {
 		isBuggy = true
 		if nalus, typ := h264parser.SplitNALUs(packet); typ != h264parser.NALU_RAW {
 			for _, nalu := range nalus {
 				if len(nalu) > 0 {
-					if err = self.handleH264Payload(timestamp, nalu); err != nil {
+					if err = handleH264Payload(self, timestamp, nalu); err != nil {
 						return
 					}
 				}
@@ -134,14 +134,14 @@ func (self *Stream) handleBuggyAnnexbH264Packet(timestamp uint32, packet []byte)
 	return
 }
 
-func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err error) {
+func handleH264Payload(self *Stream, timestamp uint32, packet []byte) (err error) {
 	if len(packet) < 2 {
 		err = fmt.Errorf("rtp: h264 packet too short")
 		return
 	}
 
 	var isBuggy bool
-	if isBuggy, err = self.handleBuggyAnnexbH264Packet(timestamp, packet); isBuggy {
+	if isBuggy, err = handleBuggyAnnexbH264Packet(self, timestamp, packet); isBuggy {
 		return
 	}
 
@@ -287,7 +287,7 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 			self.fuBuffer = append(self.fuBuffer, packet[2:]...)
 			if isEnd {
 				self.fuStarted = false
-				if err = self.handleH264Payload(timestamp, self.fuBuffer); err != nil {
+				if err = handleH264Payload(self, timestamp, self.fuBuffer); err != nil {
 					return
 				}
 			}
@@ -322,7 +322,7 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 			if size+2 > len(packet) {
 				break
 			}
-			if err = self.handleH264Payload(timestamp, packet[2:size+2]); err != nil {
+			if err = handleH264Payload(self, timestamp, packet[2:size+2]); err != nil {
 				return
 			}
 			packet = packet[size+2:]
@@ -352,7 +352,7 @@ func (s *Stream) handleRtpPacket(packet []byte) error {
 
 	switch s.Sdp.Type {
 	case av.H264:
-		if err := s.handleH264Payload(pkt.Timestamp, pkt.Payload); err != nil {
+		if err := handleH264Payload(s, pkt.Timestamp, pkt.Payload); err != nil {
 			return err
 		}
 
