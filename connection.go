@@ -33,6 +33,7 @@ type connection struct {
 }
 
 func newConnection(url string) (conn *connection, err error) {
+	log.Debugv("RTSP Opening Connection", "url", url)
 	rtsp, err := client.Dial(url)
 	if err != nil {
 		log.Errorv("Open RTSP Connection", "url", url, "error", err)
@@ -130,7 +131,7 @@ func (c *connection) loop() {
 	}
 	c.wg.Wait()
 
-	log.Infov("Close RTSP Connection", "key", c.key)
+	log.Debugv("Close RTSP Connection", "key", c.key)
 	err := c.rtsp.Close()
 	if err != nil {
 		log.Errorv("Close RTSP Connection", "key", c.key, "error", err)
@@ -141,7 +142,7 @@ func (c *connection) closeChannel(ch *Channel) {
 	c.channels.Delete(ch.key)
 	close(ch.packets)
 	c.wg.Done()
-	log.Infov("Close RTSP Channel", "key", ch.key)
+	log.Debugv("Close RTSP Channel", "key", ch.key)
 }
 
 func (c *connection) setCodecs(codecs []av.CodecData) {
