@@ -2,14 +2,12 @@ package rtsp
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/fanap-infra/log"
 )
 
 type Provider struct {
-	conns    sync.Map
-	connsKey uint32
+	conns sync.Map
 }
 
 func NewProvider() *Provider {
@@ -32,9 +30,9 @@ func (p *Provider) OpenChannel(url string) (ch *Channel, err error) {
 		return nil, err
 	}
 
-	conn.key = atomic.AddUint32(&p.connsKey, 1)
 	conn.provider = p
-	p.conns.Store(conn.key, p)
+	conn.url = url
+	p.conns.Store(url, conn)
 	ch = conn.OpenChannel()
 	conn.Run()
 

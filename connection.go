@@ -16,9 +16,9 @@ import (
 const naulStartCode = uint32(0x00_00_00_01)
 
 type connection struct {
-	key      uint32
 	provider *Provider
 
+	url         string
 	chans       []Channel
 	rtsp        *client.Client
 	channels    sync.Map
@@ -50,7 +50,9 @@ func newConnection(url string) (conn *connection, err error) {
 func (c *connection) OpenChannel() *Channel {
 	ch := newChannel()
 	ch.conn = c
-	ch.key = atomic.AddUint32(&c.channelsKey, 1)
+	atomic.AddUint32(&c.channelsKey, 1)
+	ch.key = c.channelsKey
+	log.Debugv("New Channel", "key", ch.key)
 	c.channels.Store(ch.key, ch)
 	c.wg.Add(1)
 
@@ -131,10 +133,10 @@ func (c *connection) loop() {
 	}
 	c.wg.Wait()
 
-	log.Debugv("Close RTSP Connection", "key", c.key)
+	log.Debugv("Close RTSP Connection", "url", c.url)
 	err := c.rtsp.Close()
 	if err != nil {
-		log.Errorv("Close RTSP Connection", "key", c.key, "error", err)
+		log.Errorv("Close RTSP Connection", "url", c.url, "error", err)
 	}
 }
 
