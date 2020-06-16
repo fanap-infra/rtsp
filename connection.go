@@ -120,20 +120,25 @@ func (c *connection) loop() {
 			packet.Data = pkt.Data[4:]
 		}
 
-		count := 0
+		// ToDo: this way is bad for check empty Channel
+		empty := true
 		c.channels.Range(func(_, value interface{}) bool {
-			count++
+			empty = false
 			go value.(*Channel).sendPacket(packet, h264Info)
 			return true
 		})
 		buf.Reset()
-		if count <= 0 {
+		if empty {
 			break
 		}
 	}
 	c.wg.Wait()
+	c.close()
+}
 
+func (c *connection) close() {
 	log.Debugv("Close RTSP Connection", "url", c.url)
+	c.provider.conns.Delete(c.url)
 	err := c.rtsp.Close()
 	if err != nil {
 		log.Errorv("Close RTSP Connection", "url", c.url, "error", err)
