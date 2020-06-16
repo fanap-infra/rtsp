@@ -16,6 +16,10 @@ func NewProvider() *Provider {
 	return &Provider{}
 }
 
+func (p *Provider) Status() (resp string, err error) {
+	return "OK", nil
+}
+
 func (p *Provider) OpenChannel(url string) (ch *Channel, err error) {
 	if conn, ok := p.conns.Load(url); ok {
 		ch = conn.(*connection).OpenChannel()
