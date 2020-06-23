@@ -16,6 +16,8 @@ type Channel struct {
 	packets   chan Packet
 	prevTime  time.Duration
 	onceClose sync.Once
+	sendLock  sync.Mutex
+	closing   bool
 }
 
 func newChannel() *Channel {
@@ -30,6 +32,12 @@ func (ch *Channel) GetKey() uint32 {
 
 func (ch *Channel) Close() {
 	ch.onceClose.Do(func() {
+		{
+			ch.sendLock.Lock()
+			defer ch.sendLock.Unlock()
+			ch.closing = true
+		}
+
 		ch.conn.closeChannel(ch)
 	})
 }
@@ -39,6 +47,13 @@ func (ch *Channel) Packets() <-chan Packet {
 }
 
 func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
+	ch.sendLock.Lock()
+	defer ch.sendLock.Unlock()
+
+	if ch.closing {
+		return
+	}
+
 	if ch.started {
 		ch.packets <- packet
 		return
