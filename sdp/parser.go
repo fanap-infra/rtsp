@@ -47,6 +47,10 @@ func Parse(content string) (sess Session, medias []Media) {
 						if len(mfields) >= 3 {
 							media.PayloadType, _ = strconv.Atoi(mfields[2])
 						}
+					// daneshvar.ho
+					// start of other media
+					default:
+						media = nil
 					}
 				}
 
