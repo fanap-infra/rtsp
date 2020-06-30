@@ -40,16 +40,14 @@ func Parse(content string) (sess Session, medias []Media) {
 			case "m":
 				if len(fields) > 0 {
 					switch fields[0] {
-					case "audio", "video":
+					case "audio", "video", "application": // daneshvar.ho: application -> for ONVIF Metadata
 						medias = append(medias, Media{AVType: fields[0]})
 						media = &medias[len(medias)-1]
 						mfields := strings.Split(fields[1], " ")
 						if len(mfields) >= 3 {
 							media.PayloadType, _ = strconv.Atoi(mfields[2])
 						}
-					// daneshvar.ho
-					// start of other media
-					default:
+					default: // daneshvar.ho: start of other media
 						media = nil
 					}
 				}
@@ -79,6 +77,8 @@ func Parse(content string) (sess Session, medias []Media) {
 								media.Type = av.AAC
 							case "H264":
 								media.Type = av.H264
+							case "VND.ONVIF.METADATA": // daneshvar.ho
+								media.Type = av.ONVIF_METADATA
 							}
 							if i, err := strconv.Atoi(keyval[1]); err == nil {
 								media.TimeScale = i

@@ -47,11 +47,13 @@ func (ch *Channel) Packets() <-chan Packet {
 }
 
 func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
-	ch.sendLock.Lock()
-	defer ch.sendLock.Unlock()
+	{
+		// ch.sendLock.Lock()
+		// defer ch.sendLock.Unlock()
 
-	if ch.closing {
-		return
+		if ch.closing {
+			return
+		}
 	}
 
 	if ch.started {

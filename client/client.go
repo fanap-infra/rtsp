@@ -640,6 +640,7 @@ func (self *Client) Setup(idx []int) (err error) {
 
 		uri := ""
 		control := self.streams[si].Sdp.Control
+
 		if strings.HasPrefix(control, "rtsp://") {
 			uri = control
 		} else {
@@ -818,6 +819,9 @@ func (self *Stream) makeCodecData() (err error) {
 				err = fmt.Errorf("rtsp: aac sdp config invalid: %s", err)
 				return
 			}
+			// ToDo: daneshvar.ho
+		case av.ONVIF_METADATA:
+			self.CodecData = codec.NewMetadataCodecData(media.Control)
 		}
 	} else {
 		switch media.PayloadType {
@@ -1161,7 +1165,11 @@ func (self *Stream) handleRtpPacket(packet []byte) (err error) {
 		self.gotpkt = true
 		self.pkt.Data = payload
 		self.timestamp = timestamp
-
+	case av.ONVIF_METADATA:
+		self.gotpkt = true
+		self.pkt.IsMetadata = true
+		self.pkt.Data = payload
+		self.timestamp = timestamp
 	default:
 		self.gotpkt = true
 		self.pkt.Data = payload

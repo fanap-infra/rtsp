@@ -3,6 +3,7 @@ package rtsp
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 	"github.com/fanap-infra/log"
 	"github.com/fanap-infra/rtsp/av"
 	"github.com/fanap-infra/rtsp/client"
+	rtspcodec "github.com/fanap-infra/rtsp/codec"
 	"github.com/fanap-infra/rtsp/codec/h264parser"
 )
 
@@ -66,7 +68,6 @@ func (c *connection) Run() {
 		return
 	}
 	c.setCodecs(codecs)
-
 	go c.loop()
 }
 
@@ -88,6 +89,17 @@ func (c *connection) loop() {
 				log.Errorv("RTSP Read Packet", "error", err)
 			}
 			return
+		}
+
+		if pkt.IsMetadata {
+			s := string(pkt.Data)
+			// if strings.Contains(s, `Name="IsMotion" Value="true"`) {
+			// 	log.Infov("ONVIF_METADATA", "IsMotion", true)
+			// } else if strings.Contains(s, `Name="IsMotion" Value="false"`) {
+			// 	log.Infov("ONVIF_METADATA", "IsMotion", false)
+			// }
+			fmt.Println(s)
+			continue
 		}
 
 		pktnalus, _ := h264parser.SplitNALUs(pkt.Data)
@@ -166,6 +178,9 @@ func (c *connection) setCodecs(codecs []av.CodecData) {
 			_ = binary.Write(&c.h264Info, binary.BigEndian, c.pps)
 		case av.AAC:
 			log.Errorf("mp4: codec type=%v is not implement", codec.Type().String())
+		case av.ONVIF_METADATA:
+			metadata := codec.(rtspcodec.MetadataData)
+			log.Errorf("mp4: codec type=%v uri=%s", codec.Type().String(), metadata.URI())
 		default:
 			log.Errorf("mp4: codec type=%v is not implement", codec.Type().String())
 		}
