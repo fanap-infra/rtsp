@@ -3,7 +3,6 @@ package rtsp
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -92,13 +91,24 @@ func (c *connection) loop() {
 		}
 
 		if pkt.IsMetadata {
-			s := string(pkt.Data)
+			// s := string(pkt.Data)
 			// if strings.Contains(s, `Name="IsMotion" Value="true"`) {
 			// 	log.Infov("ONVIF_METADATA", "IsMotion", true)
 			// } else if strings.Contains(s, `Name="IsMotion" Value="false"`) {
 			// 	log.Infov("ONVIF_METADATA", "IsMotion", false)
 			// }
-			fmt.Println(s)
+			// fmt.Println(s)
+			empty := true
+			c.channels.Range(func(_, value interface{}) bool {
+				empty = false
+				go value.(*Channel).sendPacket(packet, h264Info)
+				return true
+			})
+			buf.Reset()
+			if empty {
+				break
+			}
+
 			continue
 		}
 
