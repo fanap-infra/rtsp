@@ -140,6 +140,7 @@ func (c *connection) loop() {
 		} else {
 			h264Info = false
 			packet.IsKeyFrame = pkt.IsKeyFrame
+			packet.IsMetaData = false
 			packet.Time = pkt.Time
 			packet.Data = pkt.Data[4:]
 		}
