@@ -98,17 +98,19 @@ func (c *connection) loop() {
 			// 	log.Infov("ONVIF_METADATA", "IsMotion", false)
 			// }
 			// fmt.Println(s)
+			packet.IsMetaData = true
+			packet.IsKeyFrame = false
+			packet.Time = pkt.Time
+			packet.Data = pkt.Data
 			empty := true
 			c.channels.Range(func(_, value interface{}) bool {
 				empty = false
 				go value.(*Channel).sendPacket(packet, h264Info)
 				return true
 			})
-			buf.Reset()
 			if empty {
 				break
 			}
-
 			continue
 		}
 
