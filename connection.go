@@ -105,7 +105,9 @@ func (c *connection) loop() {
 			empty := true
 			c.channels.Range(func(_, value interface{}) bool {
 				empty = false
-				go value.(*Channel).sendPacket(packet, h264Info)
+				if value.(*Channel).started {
+					go value.(*Channel).sendPacket(packet, h264Info)
+				}
 				return true
 			})
 			if empty {
@@ -149,7 +151,9 @@ func (c *connection) loop() {
 		empty := true
 		c.channels.Range(func(_, value interface{}) bool {
 			empty = false
-			go value.(*Channel).sendPacket(packet, h264Info)
+			if value.(*Channel).started || pkt.IsKeyFrame {
+				go value.(*Channel).sendPacket(packet, h264Info)
+			}
 			return true
 		})
 		buf.Reset()
