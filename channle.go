@@ -56,7 +56,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 		}
 	}
 
-	if ch.started {
+	if ch.started && !packet.IsKeyFrame {
 		ch.packets <- packet
 		return
 	}
