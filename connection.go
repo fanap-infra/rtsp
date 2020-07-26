@@ -31,6 +31,7 @@ type connection struct {
 	h264Info        bytes.Buffer
 	sps             []byte
 	pps             []byte
+	lastFrameTime   int64
 }
 
 func newConnection(url string) (conn *connection, err error) {

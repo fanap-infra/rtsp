@@ -2,6 +2,7 @@ package rtsp
 
 import (
 	"sync"
+	"time"
 
 	"github.com/fanap-infra/log"
 )
@@ -21,7 +22,12 @@ func (p *Provider) Status() (resp string, err error) {
 func (p *Provider) OpenChannel(url string) (ch *Channel, err error) {
 	if conn, ok := p.conns.Load(url); ok {
 		ch = conn.(*connection).OpenChannel()
-		return
+		if (time.Since(time.Unix(0, conn.(*connection).lastFrameTime)).Seconds()) > 10 {
+			p.conns.Delete(url)
+		} else {
+			return
+		}
+
 	}
 
 	conn, err := newConnection(url)

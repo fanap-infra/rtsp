@@ -55,6 +55,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 			return
 		}
 	}
+	ch.conn.lastFrameTime = time.Now().UnixNano()
 
 	if ch.started && !packet.IsKeyFrame {
 		ch.packets <- packet
