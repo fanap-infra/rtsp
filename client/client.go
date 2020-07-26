@@ -491,6 +491,8 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 				if _, err = io.ReadFull(self.brconn, block[len(peek):]); err != nil {
 					return
 				}
+				//TODO: find a better way to sync reading latency
+				time.Sleep(2 * time.Microsecond)
 				return
 			}
 			stat = 0
