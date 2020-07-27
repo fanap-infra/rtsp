@@ -74,6 +74,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 
 			ch.packets <- Packet{
 				IsKeyFrame: true,
+				IsMetaData: false,
 				Time:       packet.Time,
 				Data:       buf.Bytes(),
 			}
