@@ -22,7 +22,7 @@ func (p *Provider) Status() (resp string, err error) {
 func (p *Provider) OpenChannel(url string) (ch *Channel, err error) {
 	if conn, ok := p.conns.Load(url); ok {
 		ch = conn.(*connection).OpenChannel()
-		if (time.Since(time.Unix(0, conn.(*connection).lastFrameTime)).Seconds()) > 10 {
+		if (conn.(*connection).lastFrameTime != 0) && (time.Since(time.Unix(0, conn.(*connection).lastFrameTime)).Seconds()) > 10 {
 			p.conns.Delete(url)
 		} else {
 			return
