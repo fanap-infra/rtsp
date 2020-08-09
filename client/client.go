@@ -1166,6 +1166,7 @@ func (self *Stream) handleRtpPacket(packet []byte) (err error) {
 		payload = payload[4:] // TODO: remove this hack
 		self.gotpkt = true
 		self.pkt.Data = payload
+		self.pkt.IsAudio = true
 		self.timestamp = timestamp
 	case av.ONVIF_METADATA:
 		self.gotpkt = true
@@ -1175,6 +1176,7 @@ func (self *Stream) handleRtpPacket(packet []byte) (err error) {
 	default:
 		self.gotpkt = true
 		self.pkt.Data = payload
+		self.pkt.IsAudio = true
 		self.timestamp = timestamp
 	}
 

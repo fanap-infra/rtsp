@@ -78,20 +78,21 @@ func (c *connection) loop() {
 	var buf bytes.Buffer
 	var packet Packet
 	h264Info := false
-
 	for {
 		pkt, err := c.rtsp.ReadPacket()
-
 		if err != nil {
 			c.channels.Range(func(_, value interface{}) bool {
 				c.closeChannel(value.(*Channel))
 				return true
 			})
-
 			if err != io.EOF {
 				log.Errorv("RTSP Read Packet", "error", err)
 			}
 			return
+		}
+		if pkt.IsAudio {
+			// TODO: handle audio, so that it can be played.
+			continue
 		}
 
 		if pkt.IsMetadata {
