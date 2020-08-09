@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/fanap-infra/log"
 	"github.com/fanap-infra/rtsp/av"
@@ -32,6 +33,7 @@ type connection struct {
 	sps             []byte
 	pps             []byte
 	lastFrameTime   int64
+	streamStartTime time.Time
 }
 
 func newConnection(url string) (conn *connection, err error) {
@@ -43,7 +45,8 @@ func newConnection(url string) (conn *connection, err error) {
 	}
 
 	conn = &connection{
-		rtsp: rtsp,
+		rtsp:            rtsp,
+		streamStartTime: time.Now(),
 	}
 
 	return
