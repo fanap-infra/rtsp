@@ -783,7 +783,7 @@ func (self *Stream) makeCodecData() (err error) {
 	media := self.Sdp
 
 	// daneshvar.ho PayloadType -> 35-71 Unassigned
-	if (media.PayloadType >= 96 && media.PayloadType <= 127) || (media.PayloadType >= 35 || media.PayloadType <= 71) {
+	if (media.PayloadType >= 96 && media.PayloadType <= 127) || (media.PayloadType >= 35 && media.PayloadType <= 71) {
 		switch media.Type {
 		case av.H264:
 			for _, nalu := range media.SpropParameterSets {
