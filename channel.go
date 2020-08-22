@@ -57,12 +57,12 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 	}
 	ch.conn.lastFrameTime = time.Now().UnixNano()
 
-	if ch.started && !packet.IsKeyFrame {
+	if ch.started && !packet.IsKeyFrame && !IsClosed(ch.packets) {
 		ch.packets <- packet
 		return
 	}
 
-	if packet.IsKeyFrame {
+	if packet.IsKeyFrame && !IsClosed(ch.packets) {
 		ch.started = true
 		if h264Info {
 			ch.packets <- packet
@@ -80,4 +80,13 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 			}
 		}
 	}
+}
+func IsClosed(ch <-chan Packet) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+	}
+
+	return false
 }
