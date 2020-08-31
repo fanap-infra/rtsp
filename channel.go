@@ -1,8 +1,7 @@
 package rtsp
 
 import (
-	"bytes"
-	"encoding/binary"
+	"github.com/fanap-infra/log"
 	"sync"
 	"time"
 )
@@ -58,35 +57,35 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 	ch.conn.lastFrameTime = time.Now().UnixNano()
 
 	if ch.started && !packet.IsKeyFrame && !IsClosed(ch.packets) {
-		ch.packets <- packet
-		return
+		select {
+		case ch.packets <- packet:
+			return
+		case <-time.After(100 * time.Millisecond):
+			log.Errorf("Timeout")
+			return
+		}
 	}
 
 	if packet.IsKeyFrame && !IsClosed(ch.packets) {
 		ch.started = true
-		if h264Info {
-			ch.packets <- packet
-		} else {
-			var buf bytes.Buffer
-			_ = binary.Write(&buf, binary.BigEndian, ch.conn.h264Info.Bytes())
-			_ = binary.Write(&buf, binary.BigEndian, naulStartCode)
-			_ = binary.Write(&buf, binary.BigEndian, packet.Data)
-
-			ch.packets <- Packet{
-				IsKeyFrame: true,
-				IsMetaData: false,
-				Time:       packet.Time,
-				Data:       buf.Bytes(),
-			}
+		select {
+		case ch.packets <- packet:
+			return
+		case <-time.After(100 * time.Millisecond):
+			log.Errorf("Timeout")
+			return
 		}
 	}
+	return
 }
 func IsClosed(ch <-chan Packet) bool {
 	select {
-	case <-ch:
+	case _, ok := <-ch:
+		if ok {
+			return false
+		}
 		return true
 	default:
 	}
-
 	return false
 }
