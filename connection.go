@@ -144,6 +144,12 @@ func (c *connection) loop() {
 			packet.IsKeyFrame = pkt.IsKeyFrame
 			packet.Time = pkt.Time
 			packet.Data = buf.Bytes()
+		} else {
+			h264Info = false
+			packet.IsKeyFrame = pkt.IsKeyFrame
+			packet.IsMetaData = false
+			packet.Time = pkt.Time
+			packet.Data = pkt.Data[4:]
 		}
 
 		// ToDo: this way is bad for check empty Channel

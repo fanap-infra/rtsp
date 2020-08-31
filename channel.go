@@ -60,7 +60,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 		select {
 		case ch.packets <- packet:
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(5 * time.Millisecond):
 			log.Errorf("Timeout")
 			return
 		}
@@ -71,7 +71,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 		select {
 		case ch.packets <- packet:
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(5 * time.Millisecond):
 			log.Errorf("Timeout")
 			return
 		}
