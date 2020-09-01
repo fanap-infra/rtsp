@@ -1,7 +1,6 @@
 package rtsp
 
 import (
-	"github.com/fanap-infra/log"
 	"sync"
 	"time"
 )
@@ -60,9 +59,9 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 		select {
 		case ch.packets <- packet:
 			return
-		case <-time.After(15 * time.Millisecond):
+			/*case <-time.After(15 * time.Millisecond):
 			log.Errorf("Timeout")
-			return
+			return*/
 		}
 	}
 
@@ -71,9 +70,9 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 		select {
 		case ch.packets <- packet:
 			return
-		case <-time.After(15 * time.Millisecond):
+			/*case <-time.After(15 * time.Millisecond):
 			log.Errorf("Timeout")
-			return
+			return*/
 		}
 	}
 	return
