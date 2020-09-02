@@ -1,6 +1,7 @@
 package rtsp
 
 import (
+	"github.com/fanap-infra/log"
 	"sync"
 	"time"
 )
@@ -45,6 +46,11 @@ func (ch *Channel) Packets() <-chan Packet {
 }
 
 func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("System Error")
+		}
+	}()
 	{
 		// ch.sendLock.Lock()
 		// defer ch.sendLock.Unlock()
