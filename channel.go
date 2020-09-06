@@ -61,7 +61,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 	}
 	ch.conn.lastFrameTime = time.Now().UnixNano()
 
-	if ch.started && !packet.IsKeyFrame && !IsClosed(ch.packets) {
+	if ch.started && !packet.IsKeyFrame {
 		select {
 		case ch.packets <- packet:
 			return
@@ -71,7 +71,7 @@ func (ch *Channel) sendPacket(packet Packet, h264Info bool) {
 		}
 	}
 
-	if packet.IsKeyFrame && !IsClosed(ch.packets) {
+	if packet.IsKeyFrame {
 		ch.started = true
 		select {
 		case ch.packets <- packet:
