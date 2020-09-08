@@ -25,12 +25,15 @@ type Connection struct {
 	sps             []byte
 	pps             []byte
 
-	wg        sync.WaitGroup
-	cond      *sync.Cond
-	buf       []Packet
-	bufLen    int64
-	threshold int64
-	bufIndex  int64
+	wg           sync.WaitGroup
+	cond         *sync.Cond
+	bufLen       int64
+	buf          []Packet
+	bufThreshold int64
+	bufIndex     int64
+
+	listenerRef int64
+	closeSignal chan struct{}
 }
 
 func newConnection2(url string) (conn *Connection, err error) {
@@ -44,11 +47,12 @@ func newConnection2(url string) (conn *Connection, err error) {
 	conn = &Connection{
 		rtsp: rtsp,
 		// streamStartTime: time.Now(),
-		cond:      sync.NewCond(&sync.Mutex{}),
-		buf:       make([]Packet, 400),
-		bufLen:    400,
-		threshold: 300,
-		bufIndex:  -1,
+		cond:         sync.NewCond(&sync.Mutex{}),
+		bufLen:       400,
+		buf:          make([]Packet, 400),
+		bufThreshold: 300,
+		bufIndex:     -1,
+		closeSignal:  make(chan struct{}),
 	}
 
 	return
@@ -160,10 +164,16 @@ func (c *Connection) loop() {
 			// h264Info = false
 			c.write(pkt.Data[4:], pkt.Time, false, false)
 		}
+
+		select {
+		case <-c.closeSignal:
+			break
+		default:
+		}
 	}
 
 	c.wg.Wait()
-	c.provider.closeConn(c)
+	c.provider.deleteConn(c)
 }
 
 func (c *Connection) close() {
@@ -178,8 +188,8 @@ func (c *Connection) close() {
 // needs: packaets, packetIndex, cond and packetThreshold
 func (c *Connection) GetPacket(pos *int64) *Packet {
 	c.cond.L.Lock()
-	if c.bufIndex-*pos > c.threshold {
-		*pos = c.bufIndex - c.threshold
+	if c.bufIndex-*pos > c.bufThreshold {
+		*pos = c.bufIndex - c.bufThreshold
 	} else {
 		*pos++
 	}
