@@ -1,44 +1,41 @@
 package rtsp
 
 import (
-	"sync/atomic"
-
 	"github.com/fanap-infra/log"
 )
 
-func (p *Provider) GetConn(url string) (*Connection, error) {
-	p.conns2Lock.Lock()
-	defer p.conns2Lock.Unlock()
-	if conn, ok := p.conns2[url]; ok {
-		atomic.AddInt64(&conn.listenerRef, 1)
-		return conn, nil
+func (p *Provider) OpenChannel2(url string) (ch *Channel2, err error) {
+	var conn *connection2
+	ok := false
+
+	{
+		p.conns2Lock.Lock()
+		defer p.conns2Lock.Unlock()
+
+		if conn, ok = p.conns2[url]; !ok {
+			if conn, err = p.newConn(url); err != nil {
+				return
+			}
+		}
 	}
-	return p.newConn(url)
+
+	return conn.addChannel(), nil
 }
 
-func (p *Provider) PutConn(conn *Connection) {
-	if atomic.AddInt64(&conn.listenerRef, -1) <= 0 {
-		conn.closeSignal <- struct{}{}
-	}
-}
-
-func (p *Provider) newConn(url string) (*Connection, error) {
-	conn, err := newConnection2(url)
+func (p *Provider) newConn(url string) (conn *connection2, err error) {
+	conn, err = newConnection2(url, p)
 	if err != nil {
 		log.Errorv("New RTSP Connection", "url", url, "error", err)
-		return nil, err
+		return
 	}
-
-	conn.provider = p
-	conn.url = url
 	p.conns2[url] = conn
 	conn.Run()
-	return conn, nil
+	return
 }
 
-func (p *Provider) deleteConn(conn *Connection) {
+func (p *Provider) delConn(conn *connection2) {
+	log.Debugv("RTSP Provider delete connection", "url", conn.url)
 	p.conns2Lock.Lock()
 	defer p.conns2Lock.Unlock()
-	conn.close()
 	delete(p.conns2, conn.url)
 }
