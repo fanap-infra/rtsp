@@ -202,7 +202,11 @@ func (c *connection2) ReadPacket(pos *int64) *Packet {
 		*pos = 0
 		c.cond.Wait()
 	case *pos < 0: // if first read
-		*pos = c.bufIndex
+		for *pos = c.bufIndex; !c.buf[*pos%c.bufLen].IsKeyFrame; *pos++ {
+			if *pos > c.bufIndex {
+				c.cond.Wait()
+			}
+		}
 	case c.bufIndex-*pos > c.bufThreshold:
 		*pos = c.bufIndex - c.bufThreshold
 	default:
