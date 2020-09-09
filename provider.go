@@ -9,10 +9,16 @@ import (
 
 type Provider struct {
 	conns sync.Map
+
+	// ver2
+	conns2     map[string]*connection2
+	conns2Lock sync.Mutex
 }
 
 func NewProvider() *Provider {
-	return &Provider{}
+	return &Provider{
+		conns2: make(map[string]*connection2),
+	}
 }
 
 func (p *Provider) Status() (resp string, err error) {
@@ -28,7 +34,6 @@ func (p *Provider) OpenChannel(url string) (ch *Channel, err error) {
 		} else {
 			return
 		}
-
 	}
 
 	conn, err := newConnection(url)
