@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	neturl "net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,7 @@ import (
 type connection2 struct {
 	provider *Provider
 	url      string
+	host     string
 	rtsp     *client.Client
 	onceLoop sync.Once
 
@@ -33,30 +35,38 @@ type connection2 struct {
 	bufThreshold int64
 	bufIndex     int64 // TODO: max check int64 overflow
 
-	listenerRef int64
+	channelRef  int32
 	closeSignal chan struct{}
 }
 
 func newConnection2(url string, provider *Provider) (conn *connection2, err error) {
-	log.Debugv("RTSP Opening Connection", "url", url)
 	rtsp, err := client.Dial(url)
 	if err != nil {
 		log.Errorv("Open RTSP Connection", "url", url, "error", err)
 		return nil, err
 	}
 
+	host := url
+	u, err := neturl.Parse(url)
+	if err == nil {
+		host = u.Host
+	}
+
+	log.Infov("RTSP Opening Connection", "host", host)
+
 	conn = &connection2{
 		rtsp: rtsp,
 		// streamStartTime: time.Now(),
 		provider:     provider,
 		url:          url,
+		host:         host,
 		cond:         sync.NewCond(&sync.Mutex{}),
 		bufLen:       400,
 		buf:          make([]Packet, 400),
 		bufThreshold: 300,
 		bufIndex:     -1,
 		closeSignal:  make(chan struct{}),
-		listenerRef:  0,
+		channelRef:   0,
 	}
 
 	return
@@ -90,7 +100,7 @@ func (c *connection2) setCodecs(codecs []av.CodecData) {
 			log.Errorf("mp4: codec type=%v is not implement", codec.Type().String())
 		case av.ONVIF_METADATA:
 			metadata := codec.(rtspcodec.MetadataData)
-			log.Errorf("mp4: codec type=%v uri=%s", codec.Type().String(), metadata.URI())
+			log.Debugf("mp4: codec type=%v uri=%s", codec.Type().String(), metadata.URI())
 		default:
 			log.Errorf("mp4: codec type=%v is not implement", codec.Type().String())
 		}
@@ -98,17 +108,15 @@ func (c *connection2) setCodecs(codecs []av.CodecData) {
 }
 
 func (c *connection2) write(data []byte, time time.Duration, isKeyFrame bool, isMetaData bool, isEOF bool) {
-	c.cond.L.Lock()
-
-	c.bufIndex++
-	p := &c.buf[c.bufIndex%c.bufLen]
-
+	p := &c.buf[(c.bufIndex+1)%c.bufLen]
 	p.Data = data
 	p.IsKeyFrame = isKeyFrame
 	p.IsMetaData = isMetaData
 	p.IsEOF = isEOF
 	p.Time = time
 
+	c.cond.L.Lock()
+	c.bufIndex++
 	c.cond.Broadcast()
 	c.cond.L.Unlock()
 }
@@ -127,47 +135,36 @@ func (c *connection2) loop() {
 			return
 		}
 
-		if pkt.IsAudio {
-			// TODO: handle audio, so that it can be played.
-			continue
-		}
-
-		if pkt.IsMetadata {
-			// s := string(pkt.Data)
-			// if strings.Contains(s, `Name="IsMotion" Value="true"`) {
-			// 	log.Infov("ONVIF_METADATA", "IsMotion", true)
-			// } else if strings.Contains(s, `Name="IsMotion" Value="false"`) {
-			// 	log.Infov("ONVIF_METADATA", "IsMotion", false)
-			// }
-			// fmt.Println(s)
+		switch {
+		case pkt.IsAudio:
+		case pkt.IsMetadata:
 			c.write(pkt.Data, pkt.Time, false, true, false)
-			continue
-		}
-
-		pktnalus, _ := h264parser.SplitNALUs(pkt.Data)
-		for _, nal := range pktnalus {
-			// not I-frame or P-frame
-			if nal[0] != 97 && nal[0] != 101 {
-				c.sps = nal
-				_ = binary.Write(&c.h264Info, binary.BigEndian, naulStartCode)
-				_ = binary.Write(&c.h264Info, binary.BigEndian, c.sps)
-				_ = binary.Write(&c.h264Info, binary.BigEndian, naulStartCode)
-				_ = binary.Write(&c.h264Info, binary.BigEndian, c.pps)
-				c.h264InfoChanged = true
+		default:
+			pktnalus, _ := h264parser.SplitNALUs(pkt.Data)
+			for _, nal := range pktnalus {
+				// not I-frame or P-frame
+				if nal[0] != 97 && nal[0] != 101 {
+					c.sps = nal
+					_ = binary.Write(&c.h264Info, binary.BigEndian, naulStartCode)
+					_ = binary.Write(&c.h264Info, binary.BigEndian, c.sps)
+					_ = binary.Write(&c.h264Info, binary.BigEndian, naulStartCode)
+					_ = binary.Write(&c.h264Info, binary.BigEndian, c.pps)
+					c.h264InfoChanged = true
+				}
 			}
-		}
 
-		if pkt.IsKeyFrame {
-			c.h264InfoChanged = false
-			// h264Info = true
-			_ = binary.Write(&buf, binary.BigEndian, c.h264Info.Bytes())
-			_ = binary.Write(&buf, binary.BigEndian, naulStartCode)
-			_ = binary.Write(&buf, binary.BigEndian, pkt.Data[4:])
-			c.write(buf.Bytes(), pkt.Time, true, false, false)
-			buf.Reset()
-		} else {
-			// h264Info = false
-			c.write(pkt.Data[4:], pkt.Time, false, false, false)
+			if pkt.IsKeyFrame {
+				c.h264InfoChanged = false
+				// h264Info = true
+				_ = binary.Write(&buf, binary.BigEndian, c.h264Info.Bytes())
+				_ = binary.Write(&buf, binary.BigEndian, naulStartCode)
+				_ = binary.Write(&buf, binary.BigEndian, pkt.Data[4:])
+				c.write(buf.Bytes(), pkt.Time, true, false, false)
+				buf.Reset()
+			} else {
+				// h264Info = false
+				c.write(pkt.Data[4:], pkt.Time, false, false, false)
+			}
 		}
 
 		select {
@@ -181,10 +178,9 @@ func (c *connection2) loop() {
 
 func (c *connection2) close() {
 	c.provider.delConn(c)
-
 	c.write(nil, time.Duration(0), false, false, true)
 
-	log.Debugv("Close RTSP Connection", "url", c.url)
+	log.Infov("Close RTSP Connection", "host", c.host)
 	err := c.rtsp.Close()
 	if err != nil {
 		log.Errorv("Close RTSP Connection", "url", c.url, "error", err)
@@ -194,42 +190,53 @@ func (c *connection2) close() {
 // call from reader go routine
 // needs: packaets, packetIndex, cond and packetThreshold
 // TODO: reduce code between c.cond.L.Lock() block
-func (c *connection2) ReadPacket(pos *int64) *Packet {
-	c.cond.L.Lock()
+func (c *connection2) ReadPacket(ch *Channel2) *Packet {
+	if ch.pos < 0 { // if first read, must starting with I-frame
+		c.cond.L.Lock()
+		ok := c.bufIndex < 0
+		if ok { // if buffer is empty
+			ch.pos = 0
+			c.cond.Wait()
+		} else {
+			ch.pos = c.bufIndex
+		}
+		c.cond.L.Unlock()
 
-	switch {
-	case c.bufIndex < 0: // if buffer is empty
-		*pos = 0
-		c.cond.Wait()
-	case *pos < 0: // if first read
-		for *pos = c.bufIndex; !c.buf[*pos%c.bufLen].IsKeyFrame; *pos++ {
-			if *pos > c.bufIndex {
-				c.cond.Wait()
+		if !ok {
+			for !c.buf[ch.pos%c.bufLen].IsKeyFrame {
+				ch.pos++
+				c.cond.L.Lock()
+				if ch.pos > c.bufIndex {
+					// log.Infov("ReadPacket I-frame Wait", "id", ch.id, "pos", ch.pos, "index", c.bufIndex, "host", c.host)
+					c.cond.Wait()
+				}
+				c.cond.L.Unlock()
 			}
 		}
-	case c.bufIndex-*pos > c.bufThreshold:
-		*pos = c.bufIndex - c.bufThreshold
-	default:
-		*pos++
-		if *pos > c.bufIndex {
+	} else {
+		ch.pos++
+		c.cond.L.Lock()
+		index := c.bufIndex
+		if index-ch.pos > c.bufThreshold {
+			ch.pos = index - c.bufThreshold
+		} else if ch.pos > index {
+			// log.Infov("ReadPacket Wait", "id", ch.id, "pos", ch.pos, "index", c.bufIndex, "host", c.host)
 			c.cond.Wait()
 		}
+		c.cond.L.Unlock()
 	}
 
-	p := &c.buf[*pos%c.bufLen]
-	c.cond.L.Unlock()
-	return p
+	return &c.buf[ch.pos%c.bufLen]
 }
 
 func (c *connection2) addChannel() *Channel2 {
-	atomic.AddInt64(&c.listenerRef, 1)
 	// c.wg.Add(1)
-	return newChannel2(c)
+	return newChannel2(c, atomic.AddInt32(&c.channelRef, 1))
 }
 
 func (c *connection2) doneChannel() {
 	// c.wg.Done()
-	if atomic.AddInt64(&c.listenerRef, -1) <= 0 {
+	if atomic.AddInt32(&c.channelRef, -1) <= 0 {
 		c.closeSignal <- struct{}{}
 	}
 }
