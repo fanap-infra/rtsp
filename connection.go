@@ -202,7 +202,7 @@ func (c *connection) setCodecs(codecs []av.CodecData) {
 			log.Errorf("mp4: codec type=%v is not implement", codec.Type().String())
 		case av.ONVIF_METADATA:
 			metadata := codec.(rtspcodec.MetadataData)
-			log.Errorf("mp4: codec type=%v uri=%s", codec.Type().String(), metadata.URI())
+			log.Debugf("mp4: codec type=%v uri=%s", codec.Type().String(), metadata.URI())
 		default:
 			log.Errorf("mp4: codec type=%v is not implement", codec.Type().String())
 		}

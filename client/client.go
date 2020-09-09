@@ -915,16 +915,16 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 		// daneshvar.ho
 
 		if self.client != nil && self.client.DebugRtp {
-			fmt.Println("rtsp: got sps")
+			log.Info("rtsp: got sps")
 		}
 		if len(self.sps) == 0 {
 			self.sps = packet
 			self.makeCodecData()
-			log.Info("RTSP: makeCodecData")
+			// log.Info("RTSP: makeCodecData")
 		} else if bytes.Compare(self.sps, packet) != 0 {
 			self.spsChanged = true
 			self.sps = packet
-			log.Info("RTSP: SPS changed")
+			// log.Info("RTSP: SPS changed")
 
 			// daneshvar.ho
 			self.pkt.IsKeyFrame = false
@@ -934,13 +934,13 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 			// daneshvar.ho
 
 			if self.client != nil && self.client.DebugRtp {
-				fmt.Println("rtsp: sps changed")
+				log.Info("rtsp: sps changed")
 			}
 		}
 
 	case naluType == 8: // pps
 		if self.client != nil && self.client.DebugRtp {
-			fmt.Println("rtsp: got pps")
+			log.Info("rtsp: got pps")
 		}
 		if len(self.pps) == 0 {
 			self.pps = packet
@@ -949,7 +949,7 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 			self.ppsChanged = true
 			self.pps = packet
 			if self.client != nil && self.client.DebugRtp {
-				fmt.Println("rtsp: pps changed")
+				log.Info("rtsp: pps changed")
 			}
 		}
 
