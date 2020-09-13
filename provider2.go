@@ -4,7 +4,7 @@ import (
 	"github.com/fanap-infra/log"
 )
 
-func (p *Provider) OpenChannel2(url string) (ch *Channel2, err error) {
+func (p *Provider) OpenStream(url string) (s *Stream, err error) {
 	var conn *connection2
 	ok := false
 
@@ -19,7 +19,7 @@ func (p *Provider) OpenChannel2(url string) (ch *Channel2, err error) {
 		}
 	}
 
-	return conn.addChannel(), nil
+	return conn.createStream(), nil
 }
 
 func (p *Provider) newConn(url string) (conn *connection2, err error) {
