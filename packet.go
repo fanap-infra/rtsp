@@ -4,10 +4,6 @@ import (
 	"time"
 )
 
-type PacketReader interface {
-	ReadPacket() *Packet
-}
-
 type Packet struct {
 	IsMetaData bool
 	IsKeyFrame bool

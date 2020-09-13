@@ -35,28 +35,26 @@ type connection2 struct {
 	bufThreshold int64
 	bufIndex     int64 // TODO: max check int64 overflow
 
-	channelRef  int32
-	closeSignal chan struct{}
+	streamRef int32
+	done      chan struct{}
 }
 
 func newConnection2(url string, provider *Provider) (conn *connection2, err error) {
+	host := url
+	u, err := neturl.Parse(url)
+	if err == nil {
+		host = u.Host
+	}
+	log.Infov("RTSP Opening", "host", host, "url", url)
+
 	rtsp, err := client.Dial(url)
 	if err != nil {
 		log.Errorv("Open RTSP Connection", "url", url, "error", err)
 		return nil, err
 	}
 
-	host := url
-	u, err := neturl.Parse(url)
-	if err == nil {
-		host = u.Host
-	}
-
-	log.Infov("RTSP Opening Connection", "host", host)
-
 	conn = &connection2{
-		rtsp: rtsp,
-		// streamStartTime: time.Now(),
+		rtsp:         rtsp,
 		provider:     provider,
 		url:          url,
 		host:         host,
@@ -65,8 +63,8 @@ func newConnection2(url string, provider *Provider) (conn *connection2, err erro
 		buf:          make([]Packet, 400),
 		bufThreshold: 300,
 		bufIndex:     -1,
-		closeSignal:  make(chan struct{}),
-		channelRef:   0,
+		done:         make(chan struct{}),
+		streamRef:    0,
 	}
 
 	return
@@ -168,7 +166,7 @@ func (c *connection2) loop() {
 		}
 
 		select {
-		case <-c.closeSignal:
+		case <-c.done:
 			c.close()
 			return
 		default:
@@ -190,23 +188,23 @@ func (c *connection2) close() {
 // call from reader go routine
 // needs: packaets, packetIndex, cond and packetThreshold
 // TODO: reduce code between c.cond.L.Lock() block
-func (c *connection2) ReadPacket(ch *Channel2) *Packet {
-	if ch.pos < 0 { // if first read, must starting with I-frame
+func (c *connection2) ReadPacket(s *Stream) *Packet {
+	if s.pos < 0 { // if first read, must starting with I-frame
 		c.cond.L.Lock()
 		ok := c.bufIndex < 0
 		if ok { // if buffer is empty
-			ch.pos = 0
+			s.pos = 0
 			c.cond.Wait()
 		} else {
-			ch.pos = c.bufIndex
+			s.pos = c.bufIndex
 		}
 		c.cond.L.Unlock()
 
 		if !ok {
-			for !c.buf[ch.pos%c.bufLen].IsKeyFrame {
-				ch.pos++
+			for !c.buf[s.pos%c.bufLen].IsKeyFrame {
+				s.pos++
 				c.cond.L.Lock()
-				if ch.pos > c.bufIndex {
+				if s.pos > c.bufIndex {
 					// log.Infov("ReadPacket I-frame Wait", "id", ch.id, "pos", ch.pos, "index", c.bufIndex, "host", c.host)
 					c.cond.Wait()
 				}
@@ -214,29 +212,29 @@ func (c *connection2) ReadPacket(ch *Channel2) *Packet {
 			}
 		}
 	} else {
-		ch.pos++
+		s.pos++
 		c.cond.L.Lock()
 		index := c.bufIndex
-		if index-ch.pos > c.bufThreshold {
-			ch.pos = index - c.bufThreshold
-		} else if ch.pos > index {
+		if index-s.pos > c.bufThreshold {
+			s.pos = index - c.bufThreshold
+		} else if s.pos > index {
 			// log.Infov("ReadPacket Wait", "id", ch.id, "pos", ch.pos, "index", c.bufIndex, "host", c.host)
 			c.cond.Wait()
 		}
 		c.cond.L.Unlock()
 	}
 
-	return &c.buf[ch.pos%c.bufLen]
+	return &c.buf[s.pos%c.bufLen]
 }
 
-func (c *connection2) addChannel() *Channel2 {
+func (c *connection2) createStream() *Stream {
 	// c.wg.Add(1)
-	return newChannel2(c, atomic.AddInt32(&c.channelRef, 1))
+	return newStream(c, atomic.AddInt32(&c.streamRef, 1))
 }
 
-func (c *connection2) doneChannel() {
+func (c *connection2) doneStream() {
 	// c.wg.Done()
-	if atomic.AddInt32(&c.channelRef, -1) <= 0 {
-		c.closeSignal <- struct{}{}
+	if atomic.AddInt32(&c.streamRef, -1) <= 0 {
+		c.done <- struct{}{}
 	}
 }
