@@ -9,13 +9,13 @@ type StreamReader interface {
 }
 
 type Stream struct {
-	conn *connection2
+	conn *connection
 	id   int32
 	pos  int64
 	key  string
 }
 
-func newStream(conn *connection2, id int32) *Stream {
+func newStream(conn *connection, id int32) *Stream {
 	return &Stream{
 		conn: conn,
 		id:   id,
@@ -26,6 +26,10 @@ func newStream(conn *connection2, id int32) *Stream {
 
 func (s *Stream) Read() *Packet {
 	return s.conn.ReadPacket(s)
+}
+
+func (s *Stream) Pos() int64 {
+	return s.pos
 }
 
 func (s *Stream) Close() {
