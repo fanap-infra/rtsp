@@ -2,7 +2,6 @@ package rtsp
 
 import (
 	"sync"
-	"time"
 
 	"github.com/fanap-infra/log"
 )
@@ -11,13 +10,13 @@ type Provider struct {
 	conns sync.Map
 
 	// ver2
-	conns2     map[string]*connection2
+	conns2     map[string]*connection
 	conns2Lock sync.Mutex
 }
 
 func NewProvider() *Provider {
 	return &Provider{
-		conns2: make(map[string]*connection2),
+		conns2: make(map[string]*connection),
 	}
 }
 
@@ -25,28 +24,38 @@ func (p *Provider) Status() (resp string, err error) {
 	return "OK", nil
 }
 
-func (p *Provider) OpenChannel(url string) (ch *Channel, err error) {
-	if conn, ok := p.conns.Load(url); ok {
-		ch = conn.(*connection).OpenChannel()
-		if (time.Since(conn.(*connection).streamStartTime).Seconds() > 10 || (conn.(*connection).lastFrameTime != 0)) &&
-			(time.Since(time.Unix(0, conn.(*connection).lastFrameTime)).Seconds()) > 10 {
-			p.conns.Delete(url)
-		} else {
-			return
+func (p *Provider) OpenStream(url string) (s *Stream, err error) {
+	var conn *connection
+	ok := false
+
+	{
+		p.conns2Lock.Lock()
+		defer p.conns2Lock.Unlock()
+
+		if conn, ok = p.conns2[url]; !ok {
+			if conn, err = p.newConn(url); err != nil {
+				return
+			}
 		}
 	}
 
-	conn, err := newConnection(url)
+	return conn.createStream(), nil
+}
+
+func (p *Provider) newConn(url string) (conn *connection, err error) {
+	conn, err = newConnection(url, p)
 	if err != nil {
 		log.Errorv("New RTSP Connection", "url", url, "error", err)
-		return nil, err
+		return
 	}
-
-	conn.provider = p
-	conn.url = url
-	p.conns.Store(url, conn)
-	ch = conn.OpenChannel()
+	p.conns2[url] = conn
 	conn.Run()
-
 	return
+}
+
+func (p *Provider) delConn(conn *connection) {
+	log.Debugv("RTSP Provider delete connection", "url", conn.url)
+	p.conns2Lock.Lock()
+	defer p.conns2Lock.Unlock()
+	delete(p.conns2, conn.url)
 }
