@@ -16,6 +16,8 @@ import (
 	"github.com/fanap-infra/rtsp/codec/h264parser"
 )
 
+const naulStartCode = uint32(0x00_00_00_01)
+
 type connection struct {
 	provider *Provider
 	url      string
