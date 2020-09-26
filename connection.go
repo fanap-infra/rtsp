@@ -123,11 +123,13 @@ func (c *connection) loop() {
 	for {
 		pkt, err := c.rtsp.ReadPacket()
 		if err != nil {
-			c.close()
-			if err != io.EOF {
-				log.Errorv("RTSP Read Packet", "error", err)
+			if err == io.EOF {
+				c.close()
+				return
 			}
-			return
+
+			log.Errorv("RTSP Read Packet", "error", err)
+			continue
 		}
 
 		switch {
@@ -188,10 +190,10 @@ func (c *connection) write(data []byte, time time.Duration, isKeyFrame bool, isM
 	p.IsEOF = isEOF
 	p.Time = time
 
-	// c.lock.Lock()
-	// defer c.lock.Unlock()
-	//c.bufIndex++
+	c.lock.Lock()
 	atomic.AddInt64(&c.bufIndex, 1)
+	defer c.lock.Unlock()
+	//c.bufIndex++
 
 	//c.bufIndex++
 	//if c.bufIndex > 300 {
