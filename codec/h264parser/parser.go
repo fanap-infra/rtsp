@@ -11,14 +11,23 @@ import (
 
 const (
 	NALU_SEI = 6
-	NALU_PPS = 7
-	NALU_SPS = 8
+	NALU_SPS = 7
+	NALU_PPS = 8
 	NALU_AUD = 9
 )
 
+func GetNALUType(b []byte) byte {
+	return b[0] & 0x1f
+}
+
 func IsDataNALU(b []byte) bool {
-	typ := b[0] & 0x1f
+	typ := GetNALUType(b)
 	return typ >= 1 && typ <= 5
+}
+
+func IsSPSNALU(b []byte) bool {
+	typ := GetNALUType(b)
+	return typ == NALU_SPS
 }
 
 /*
