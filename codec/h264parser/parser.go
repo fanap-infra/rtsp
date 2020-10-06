@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
+	// "github.com/fanap-infra/log"
+
 	"github.com/fanap-infra/rtsp/av"
 	"github.com/fanap-infra/rtsp/utils/bits"
 	"github.com/fanap-infra/rtsp/utils/bits/pio"
@@ -14,6 +16,7 @@ const (
 	NALU_SPS = 7
 	NALU_PPS = 8
 	NALU_AUD = 9
+	Extended_SAR = 255
 )
 
 func GetNALUType(b []byte) byte {
@@ -313,33 +316,46 @@ type SPSInfo struct {
 
 	Width  uint
 	Height uint
+
+	// Vui_prameters_present_flag      uint
+	// Chroma_format_idc               uint
+	// Seq_scaling_matrix_present_flag uint
+	// FPS uint
 }
 
 func ParseSPS(data []byte) (self SPSInfo, err error) {
 	r := &bits.GolombBitReader{R: bytes.NewReader(data)}
+	// bitCounter = 0
+	// readedBitCount := 0
 
+	// for nal type
 	if _, err = r.ReadBits(8); err != nil {
 		return
 	}
+	// bitCounter += 8
 
 	if self.ProfileIdc, err = r.ReadBits(8); err != nil {
 		return
 	}
+	// bitCounter += 8
 
 	// constraint_set0_flag-constraint_set6_flag,reserved_zero_2bits
 	if _, err = r.ReadBits(8); err != nil {
 		return
 	}
+	// bitCounter += 8
 
 	// level_idc
 	if self.LevelIdc, err = r.ReadBits(8); err != nil {
 		return
 	}
+	// bitCounter += 8
 
 	// seq_parameter_set_id
 	if _, err = r.ReadExponentialGolombCode(); err != nil {
 		return
 	}
+	// bitCounter += readedBitCount
 
 	if self.ProfileIdc == 100 || self.ProfileIdc == 110 ||
 		self.ProfileIdc == 122 || self.ProfileIdc == 244 ||
@@ -350,38 +366,51 @@ func ParseSPS(data []byte) (self SPSInfo, err error) {
 		if chroma_format_idc, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
+		// self.Chroma_format_idc = chroma_format_idc
 
 		if chroma_format_idc == 3 {
 			// residual_colour_transform_flag
 			if _, err = r.ReadBit(); err != nil {
 				return
 			}
+			// bitCounter += 1
 		}
+		
 
 		// bit_depth_luma_minus8
 		if _, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
+
 		// bit_depth_chroma_minus8
 		if _, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
+
 		// qpprime_y_zero_transform_bypass_flag
 		if _, err = r.ReadBit(); err != nil {
 			return
 		}
+		// bitCounter += 1
 
 		var seq_scaling_matrix_present_flag uint
 		if seq_scaling_matrix_present_flag, err = r.ReadBit(); err != nil {
 			return
 		}
+		// bitCounter += 1
 
+		// self.Seq_scaling_matrix_present_flag = seq_scaling_matrix_present_flag
 		if seq_scaling_matrix_present_flag != 0 {
+
 			for i := 0; i < 8; i++ {
 				var seq_scaling_list_present_flag uint
 				if seq_scaling_list_present_flag, err = r.ReadBit(); err != nil {
 					return
 				}
+				// bitCounter += 1
 				if seq_scaling_list_present_flag != 0 {
 					var sizeOfScalingList uint
 					if i < 6 {
@@ -397,6 +426,7 @@ func ParseSPS(data []byte) (self SPSInfo, err error) {
 							if delta_scale, err = r.ReadSE(); err != nil {
 								return
 							}
+							// bitCounter += readedBitCount
 							nextScale = (lastScale + delta_scale + 256) % 256
 						}
 						if nextScale != 0 {
@@ -412,37 +442,45 @@ func ParseSPS(data []byte) (self SPSInfo, err error) {
 	if _, err = r.ReadExponentialGolombCode(); err != nil {
 		return
 	}
+	// bitCounter += readedBitCount
 
 	var pic_order_cnt_type uint
 	if pic_order_cnt_type, err = r.ReadExponentialGolombCode(); err != nil {
 		return
 	}
+	// bitCounter += readedBitCount
 	if pic_order_cnt_type == 0 {
 		// log2_max_pic_order_cnt_lsb_minus4
 		if _, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
 	} else if pic_order_cnt_type == 1 {
 		// delta_pic_order_always_zero_flag
 		if _, err = r.ReadBit(); err != nil {
 			return
 		}
+		// bitCounter += 1
 		// offset_for_non_ref_pic
 		if _, err = r.ReadSE(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
 		// offset_for_top_to_bottom_field
 		if _, err = r.ReadSE(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
 		var num_ref_frames_in_pic_order_cnt_cycle uint
 		if num_ref_frames_in_pic_order_cnt_cycle, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
 		for i := uint(0); i < num_ref_frames_in_pic_order_cnt_cycle; i++ {
 			if _, err = r.ReadSE(); err != nil {
 				return
 			}
+			// bitCounter += readedBitCount
 		}
 	}
 
@@ -450,49 +488,61 @@ func ParseSPS(data []byte) (self SPSInfo, err error) {
 	if _, err = r.ReadExponentialGolombCode(); err != nil {
 		return
 	}
+	// bitCounter += readedBitCount
 
 	// gaps_in_frame_num_value_allowed_flag
 	if _, err = r.ReadBit(); err != nil {
 		return
 	}
+	// bitCounter += 1
 
+	// pic_width_in_mbs_minus1
 	if self.MbWidth, err = r.ReadExponentialGolombCode(); err != nil {
 		return
 	}
+	// bitCounter += readedBitCount
 	self.MbWidth++
-
+	// pic_height_in_map_units_minus1
 	if self.MbHeight, err = r.ReadExponentialGolombCode(); err != nil {
 		return
 	}
+	// bitCounter += readedBitCount
 	self.MbHeight++
 
 	var frame_mbs_only_flag uint
 	if frame_mbs_only_flag, err = r.ReadBit(); err != nil {
 		return
 	}
+	// bitCounter += 1
 	if frame_mbs_only_flag == 0 {
 		// mb_adaptive_frame_field_flag
 		if _, err = r.ReadBit(); err != nil {
 			return
 		}
+		// bitCounter += 1
 	}
 
 	// direct_8x8_inference_flag
 	if _, err = r.ReadBit(); err != nil {
 		return
 	}
+	// bitCounter += 1
 
 	var frame_cropping_flag uint
 	if frame_cropping_flag, err = r.ReadBit(); err != nil {
 		return
 	}
+	// bitCounter += 1
+
 	if frame_cropping_flag != 0 {
 		if self.CropLeft, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
 		if self.CropRight, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
+		// bitCounter += readedBitCount
 		if self.CropTop, err = r.ReadExponentialGolombCode(); err != nil {
 			return
 		}
@@ -501,8 +551,413 @@ func ParseSPS(data []byte) (self SPSInfo, err error) {
 		}
 	}
 
+	var vui_prameters_present_flag uint
+	if vui_prameters_present_flag, err = r.ReadBit(); err != nil {
+		return
+	}
+
+	// self.Vui_prameters_present_flag = vui_prameters_present_flag
+
 	self.Width = (self.MbWidth * 16) - self.CropLeft*2 - self.CropRight*2
 	self.Height = ((2 - frame_mbs_only_flag) * self.MbHeight * 16) - self.CropTop*2 - self.CropBottom*2
+
+	// bitCounter += 1 // for rbsp_stop_one_bit
+	// r.ReadBit()
+
+	if vui_prameters_present_flag != 0 {
+		// log.Info("vui flag is set, parse vui ")
+		var vui VUIInfo
+		var aspect_ratio_info_present_flag uint
+		if aspect_ratio_info_present_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		vui.Aspect_ratio_info_present_flag = aspect_ratio_info_present_flag
+	
+		if aspect_ratio_info_present_flag != 0 {
+			var aspect_ratio_idc uint
+			if aspect_ratio_idc, err = r.ReadBits(8); err != nil {
+				return
+			}
+			vui.Aspect_ratio_idc = aspect_ratio_idc
+			if aspect_ratio_idc == Extended_SAR {
+				var sar_width uint
+				if sar_width, err = r.ReadBits(16); err != nil {
+					return
+				}
+				vui.Sar_width = sar_width
+	
+				var sar_height uint
+				if sar_height, err = r.ReadBits(16); err != nil {
+					return
+				}
+				vui.Sar_height = sar_height
+			}
+		}
+	
+		var overscan_info_present_flag uint
+		if overscan_info_present_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		vui.Overscan_info_present_flag = overscan_info_present_flag
+	
+		if overscan_info_present_flag != 0 {
+			var overscan_appropriate_flag uint
+			if overscan_appropriate_flag, err = r.ReadBit(); err != nil {
+				return
+			}
+			vui.Overscan_appropriate_flag = overscan_appropriate_flag
+		}
+	
+		var video_signal_type_present_flag uint
+		if video_signal_type_present_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		vui.Video_signal_type_present_flag = video_signal_type_present_flag
+		if video_signal_type_present_flag != 0 {
+			var video_format uint
+			if video_format, err = r.ReadBits(3); err != nil {
+				return
+			}
+			vui.Video_format = video_format
+	
+			var video_full_range_flag uint
+			if video_full_range_flag, err = r.ReadBit(); err != nil {
+				return
+			}
+			vui.Video_full_range_flag = video_full_range_flag
+	
+			var colour_description_present_flag uint
+			if colour_description_present_flag, err = r.ReadBit(); err != nil {
+				return
+			}
+			vui.Colour_description_present_flag = colour_description_present_flag
+	
+			if colour_description_present_flag != 0 {
+				var colour_primaries uint
+				if colour_primaries, err = r.ReadBits(8); err != nil {
+					return
+				}
+				vui.Colour_primaries = colour_primaries
+	
+				var transfer_characteristics uint
+				if transfer_characteristics, err = r.ReadBits(8); err != nil {
+					return
+				}
+				vui.Transfer_characteristics = transfer_characteristics
+	
+				var matrix_coefficients uint
+				if matrix_coefficients, err = r.ReadBits(8); err != nil {
+					return
+				}
+				vui.Matrix_coefficients = matrix_coefficients
+			}
+		}
+	
+		var chroma_loc_info_present_flag uint
+		if chroma_loc_info_present_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		vui.Chroma_loc_info_present_flag = chroma_loc_info_present_flag
+	
+		if chroma_loc_info_present_flag != 0 {
+			var chroma_sample_loc_type_top_field uint
+			if chroma_sample_loc_type_top_field, err = r.ReadExponentialGolombCode(); err != nil {
+				return
+			}
+			vui.Chroma_sample_loc_type_top_field = chroma_sample_loc_type_top_field
+	
+			var chroma_sample_loc_type_bottom_field uint
+			if chroma_sample_loc_type_bottom_field, err = r.ReadExponentialGolombCode(); err != nil {
+				return
+			}
+			vui.Chroma_sample_loc_type_bottom_field = chroma_sample_loc_type_bottom_field
+		}
+	
+		var timing_info_present_flag uint
+		if timing_info_present_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		vui.Timing_info_present_flag = timing_info_present_flag
+		// log.Infov("VUI", "Timing_info_present_flag", vui.Timing_info_present_flag)
+		if timing_info_present_flag != 0 {
+			var num_units_in_tick uint
+			if num_units_in_tick, err = r.ReadBits(32); err != nil {
+				return
+			}
+			vui.Num_units_in_tick = num_units_in_tick
+	
+			var time_scale uint
+			if time_scale, err = r.ReadBits(32); err != nil {
+				return
+			}
+			vui.Time_scale = time_scale
+	
+			var fixed_frame_rate_flag uint
+			if fixed_frame_rate_flag, err = r.ReadBit(); err != nil {
+				return
+			}
+			vui.Fixed_frame_rate_flag = fixed_frame_rate_flag
+
+			// self.FPS = vui.Time_scale / vui.Num_units_in_tick
+			// log.Infov("VUI", "Num_units_in_tick", vui.Num_units_in_tick, "time scale",
+			// vui.Time_scale, "fps", vui.Time_scale / vui.Num_units_in_tick, "fixed_frame_rate_flag",fixed_frame_rate_flag)
+		}
+	}
+
+	return
+}
+
+type VUIInfo struct {
+	Aspect_ratio_info_present_flag          uint // u(1)
+	Aspect_ratio_idc                        uint // u(8)
+	Sar_width                               uint // u(16)
+	Sar_height                              uint // u(16)
+	Overscan_info_present_flag              uint // u(1)
+	Overscan_appropriate_flag               uint // u(1)
+	Video_signal_type_present_flag          uint // u(1)
+	Video_format                            uint // u(3)
+	Video_full_range_flag                   uint // u(1)
+	Colour_description_present_flag         uint // u(1)
+	Colour_primaries                        uint // u(8)
+	Transfer_characteristics                uint // u(8)
+	Matrix_coefficients                     uint // u(8)
+	Chroma_loc_info_present_flag            uint // u(1)
+	Chroma_sample_loc_type_top_field        uint // ue(v)
+	Chroma_sample_loc_type_bottom_field     uint // ue(v)
+	Timing_info_present_flag                uint // u(1)
+	Num_units_in_tick                       uint // u(32)
+	Time_scale                              uint // u(32)
+	Fixed_frame_rate_flag                   uint // u(1)
+	Nal_hrd_parameters_present_flag         uint // u(1)
+	Vcl_hrd_parameters_present_flag         uint // u(1)
+	Low_delay_hrd_flag                      uint // u(1)
+	Pic_struct_present_flag                 uint // u(1)
+	Bitstream_restriction_flag              uint // u(1)
+	Motion_vectors_over_pic_boundaries_flag uint // u(1)
+	Max_bytes_per_pic_denom                 uint // ue(v)
+	Max_bits_per_mb_denom                   uint // ue(v)
+	Log2_max_mv_length_horizontal           uint // ue(v)
+	Log2_max_mv_length_vertical             uint // ue(v)
+	Max_num_reorder_frames                  uint // ue(v)
+	Max_dec_frame_buffering                 uint // ue(v)
+}
+
+func ParseVUI(data []byte, bitPointer int) (self VUIInfo, err error) {
+	buf := data[int(bitPointer/8):]
+	remaining := bitPointer % 8
+
+	r := &bits.GolombBitReader{R: bytes.NewReader(buf)}
+	for i := 0; i < remaining; i++ {
+		r.ReadBit()
+	}
+
+	var aspect_ratio_info_present_flag uint
+	if aspect_ratio_info_present_flag, err = r.ReadBit(); err != nil {
+		return
+	}
+	self.Aspect_ratio_info_present_flag = aspect_ratio_info_present_flag
+
+	if aspect_ratio_info_present_flag != 0 {
+		var aspect_ratio_idc uint
+		if aspect_ratio_idc, err = r.ReadBits(8); err != nil {
+			return
+		}
+		self.Aspect_ratio_idc = aspect_ratio_idc
+		if aspect_ratio_idc == Extended_SAR {
+			var sar_width uint
+			if sar_width, err = r.ReadBits(16); err != nil {
+				return
+			}
+			self.Sar_width = sar_width
+
+			var sar_height uint
+			if sar_height, err = r.ReadBits(16); err != nil {
+				return
+			}
+			self.Sar_height = sar_height
+		}
+	}
+
+	var overscan_info_present_flag uint
+	if overscan_info_present_flag, err = r.ReadBit(); err != nil {
+		return
+	}
+	self.Overscan_info_present_flag = overscan_info_present_flag
+
+	if overscan_info_present_flag != 0 {
+		var overscan_appropriate_flag uint
+		if overscan_appropriate_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		self.Overscan_appropriate_flag = overscan_appropriate_flag
+	}
+
+	var video_signal_type_present_flag uint
+	if video_signal_type_present_flag, err = r.ReadBit(); err != nil {
+		return
+	}
+	self.Video_signal_type_present_flag = video_signal_type_present_flag
+	if video_signal_type_present_flag != 0 {
+		var video_format uint
+		if video_format, err = r.ReadBits(3); err != nil {
+			return
+		}
+		self.Video_format = video_format
+
+		var video_full_range_flag uint
+		if video_full_range_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		self.Video_full_range_flag = video_full_range_flag
+
+		var colour_description_present_flag uint
+		if colour_description_present_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		self.Colour_description_present_flag = colour_description_present_flag
+
+		if colour_description_present_flag != 0 {
+			var colour_primaries uint
+			if colour_primaries, err = r.ReadBits(8); err != nil {
+				return
+			}
+			self.Colour_primaries = colour_primaries
+
+			var transfer_characteristics uint
+			if transfer_characteristics, err = r.ReadBits(8); err != nil {
+				return
+			}
+			self.Transfer_characteristics = transfer_characteristics
+
+			var matrix_coefficients uint
+			if matrix_coefficients, err = r.ReadBits(8); err != nil {
+				return
+			}
+			self.Matrix_coefficients = matrix_coefficients
+		}
+	}
+
+	var chroma_loc_info_present_flag uint
+	if chroma_loc_info_present_flag, err = r.ReadBit(); err != nil {
+		return
+	}
+	self.Chroma_loc_info_present_flag = chroma_loc_info_present_flag
+
+	if chroma_loc_info_present_flag != 0 {
+		var chroma_sample_loc_type_top_field uint
+		if chroma_sample_loc_type_top_field, err = r.ReadExponentialGolombCode(); err != nil {
+			return
+		}
+		self.Chroma_sample_loc_type_top_field = chroma_sample_loc_type_top_field
+
+		var chroma_sample_loc_type_bottom_field uint
+		if chroma_sample_loc_type_bottom_field, err = r.ReadExponentialGolombCode(); err != nil {
+			return
+		}
+		self.Chroma_sample_loc_type_bottom_field = chroma_sample_loc_type_bottom_field
+	}
+
+	var timing_info_present_flag uint
+	if timing_info_present_flag, err = r.ReadBit(); err != nil {
+		return
+	}
+	self.Timing_info_present_flag = timing_info_present_flag
+	if timing_info_present_flag != 0 {
+		var num_units_in_tick uint
+		if num_units_in_tick, err = r.ReadBits(32); err != nil {
+			return
+		}
+		self.Num_units_in_tick = num_units_in_tick
+
+		var time_scale uint
+		if time_scale, err = r.ReadBits(32); err != nil {
+			return
+		}
+		self.Time_scale = time_scale
+
+		var fixed_frame_rate_flag uint
+		if fixed_frame_rate_flag, err = r.ReadBit(); err != nil {
+			return
+		}
+		self.Fixed_frame_rate_flag = fixed_frame_rate_flag
+	}
+
+	// ToDo: handle hrd parameters
+	// var nal_hrd_parameters_present_flag uint
+	// if nal_hrd_parameters_present_flag, err = r.ReadBit(); err != nil {
+	// 	return
+	// }
+	// self.Nal_hrd_parameters_present_flag = nal_hrd_parameters_present_flag
+
+	// var vcl_hrd_parameters_present_flag uint
+	// if vcl_hrd_parameters_present_flag, err = r.ReadBit(); err != nil {
+	// 	return
+	// }
+	// self.Vcl_hrd_parameters_present_flag = vcl_hrd_parameters_present_flag
+
+	// if (nal_hrd_parameters_present_flag != 0) || (vcl_hrd_parameters_present_flag != 0) {
+	// 	var low_delay_hrd_flag uint
+	// 	if low_delay_hrd_flag, err = r.ReadBit(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Low_delay_hrd_flag = low_delay_hrd_flag
+	// }
+
+	// var pic_struct_present_flag uint
+	// if pic_struct_present_flag, err = r.ReadBit(); err != nil {
+	// 	return
+	// }
+	// self.Pic_struct_present_flag = pic_struct_present_flag
+
+	// var bitstream_restriction_flag uint
+	// if bitstream_restriction_flag, err = r.ReadBit(); err != nil {
+	// 	return
+	// }
+	// self.Bitstream_restriction_flag = bitstream_restriction_flag
+
+	// if bitstream_restriction_flag != 0 {
+	// 	var motion_vectors_over_pic_boundaries_flag uint
+	// 	if motion_vectors_over_pic_boundaries_flag, err = r.ReadBit(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Motion_vectors_over_pic_boundaries_flag = motion_vectors_over_pic_boundaries_flag
+
+	// 	var max_bytes_per_pic_denom uint
+	// 	if max_bytes_per_pic_denom, _, err = r.ReadExponentialGolombCode(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Max_bytes_per_pic_denom = max_bytes_per_pic_denom
+
+	// 	var max_bits_per_mb_denom uint
+	// 	if max_bits_per_mb_denom, _, err = r.ReadExponentialGolombCode(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Max_bits_per_mb_denom = max_bits_per_mb_denom
+
+	// 	var log2_max_mv_length_horizontal uint
+	// 	if log2_max_mv_length_horizontal, _, err = r.ReadExponentialGolombCode(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Log2_max_mv_length_horizontal = log2_max_mv_length_horizontal
+
+	// 	var log2_max_mv_length_vertical uint
+	// 	if log2_max_mv_length_vertical, _, err = r.ReadExponentialGolombCode(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Log2_max_mv_length_vertical = log2_max_mv_length_vertical
+
+	// 	var max_num_reorder_frames uint
+	// 	if max_num_reorder_frames, _, err = r.ReadExponentialGolombCode(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Max_num_reorder_frames = max_num_reorder_frames
+
+	// 	var max_dec_frame_buffering uint
+	// 	if max_dec_frame_buffering, _, err = r.ReadExponentialGolombCode(); err != nil {
+	// 		return
+	// 	}
+	// 	self.Max_dec_frame_buffering = max_dec_frame_buffering
+	// }
 
 	return
 }

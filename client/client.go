@@ -846,11 +846,22 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 	case naluType == 7: // sps
 		// daneshvar.ho
 		// h := packet
-		// info, err := h264parser.ParseSPS(h)
+		// info, bitPointer, err := h264parser.ParseSPS(h)
 		// if err != nil {
-		// 	log.Errorc(err.Error())
+		// 	log.Error("ParseSPS error:", err)
 		// } else {
-		// 	log.Infov("SPS", "width", info.Width, "height", info.Height)
+		// 	log.Infov("SPS", "Chroma_format_idc", info.Chroma_format_idc, "Seq_scaling_matrix_present_flag", info.Seq_scaling_matrix_present_flag,
+		// 		"Width", info.Width, "Height", info.Height, " vui_prameters_present_flag", info.Vui_prameters_present_flag, 
+		// 		", len(packet):", len(packet), ", bitPointer:", bitPointer, "fps", info.FPS)
+		// 	// if info.Vui_prameters_present_flag != 0 {
+		// 	// 	vuiInfo, err := h264parser.ParseVUI(packet, bitPointer)
+		// 	// 	if err != nil {
+		// 	// 		log.Error("ParseSPS error:", err)
+		// 	// 	} else {
+		// 	// 		log.Infov("VUI", "Timing_info_present_flag", vuiInfo.Timing_info_present_flag, "Num_units_in_tick", vuiInfo.Num_units_in_tick, "time scale",
+		// 	// 			vuiInfo.Time_scale, "fps", vuiInfo.Time_scale / vuiInfo.Num_units_in_tick)
+		// 	// 	}
+		// 	// }
 		// }
 		// daneshvar.ho
 
