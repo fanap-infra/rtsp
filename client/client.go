@@ -176,13 +176,13 @@ func (self *Client) prepare(stage int) (err error) {
 	return
 }
 
-func (self *Client) Streams() (streams []av.CodecData, err error) {
+func (self *Client) Streams() (streams []Stream, err error) {
 	if err = self.prepare(stageCodecDataDone); err != nil {
 		return
 	}
 	for _, si := range self.setupIdx {
 		stream := self.streams[si]
-		streams = append(streams, stream.CodecData)
+		streams = append(streams, *stream)
 	}
 	return
 }
