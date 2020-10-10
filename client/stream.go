@@ -24,6 +24,7 @@ type Stream struct {
 	pkt            av.Packet
 	timestamp      uint32
 	firsttimestamp uint32
+	lastTimeSample uint32
 
 	lasttime time.Duration
 }

@@ -1209,18 +1209,22 @@ func (self *Client) handleBlock(block []byte) (pkt av.Packet, ok bool, err error
 		if stream.firsttimestamp == 0 {
 			stream.firsttimestamp = stream.timestamp
 		}
+
+		ts := stream.timestamp
 		stream.timestamp -= stream.firsttimestamp
 
 		ok = true
 		pkt = stream.pkt
 		pkt.Time = time.Duration(stream.timestamp) * time.Second / time.Duration(stream.timeScale())
 		pkt.Idx = int8(self.setupMap[i])
+		pkt.TimeSample = ts - stream.lastTimeSample
 
 		if pkt.Time < stream.lasttime || pkt.Time-stream.lasttime > time.Minute*30 {
 			err = fmt.Errorf("rtp: time invalid stream#%d time=%v lasttime=%v", pkt.Idx, pkt.Time, stream.lasttime)
 			return
 		}
 		stream.lasttime = pkt.Time
+		stream.lastTimeSample = ts
 
 		logRTP.Tracev("rtp: pktout", "index", pkt.Idx, "time", pkt.Time, "len", len(pkt.Data))
 
