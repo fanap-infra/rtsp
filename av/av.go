@@ -251,7 +251,8 @@ type Packet struct {
 	Idx             int8          // stream index in container format
 	CompositionTime time.Duration // packet presentation time minus decode time for H264 B-Frame
 	Time            time.Duration // packet decode time
-	Data            []byte        // packet data
+	TimeSample      uint32
+	Data            []byte // packet data
 }
 
 // Raw audio frame.
