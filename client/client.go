@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/binary"
@@ -31,8 +32,10 @@ var ErrCodecDataChange = fmt.Errorf("rtsp: codec data change, please call Handle
 // var DebugRtsp = false
 var SkipErrRtpBlock = false
 
-var logRTP = log.GetScope("RTP")
-var logRTSP = log.GetScope("RTSP")
+var (
+	logRTP  = log.GetScope("RTP")
+	logRTSP = log.GetScope("RTSP")
+)
 
 const (
 	stageDescribeDone = iota + 1
@@ -87,7 +90,11 @@ type Response struct {
 	Block []byte
 }
 
-func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
+func dial(ctx context.Context, uri string, timeout time.Duration) (self *Client, err error) {
+	if !strings.HasPrefix(uri, "rtsp://") {
+		return nil, fmt.Errorf("RTSP doesn't support protocol: %s", uri)
+	}
+
 	var URL *url.URL
 	if URL, err = url.Parse(uri); err != nil {
 		return
@@ -99,7 +106,7 @@ func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
 
 	dailer := net.Dialer{Timeout: timeout}
 	var conn net.Conn
-	if conn, err = dailer.Dial("tcp", URL.Host); err != nil {
+	if conn, err = dailer.DialContext(ctx, "tcp", URL.Host); err != nil {
 		return
 	}
 
@@ -118,12 +125,16 @@ func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
 	return
 }
 
-func Dial(uri string) (self *Client, err error) {
-	if !strings.HasPrefix(uri, "rtsp://") {
-		return nil, fmt.Errorf("RTSP doesn't support protocol: %s", uri)
-	}
+func DialTimeout(uri string, timeout time.Duration) (self *Client, err error) {
+	return dial(context.Background(), uri, timeout)
+}
 
-	return DialTimeout(uri, 0)
+func Dial(uri string) (self *Client, err error) {
+	return dial(context.Background(), uri, 0)
+}
+
+func DialContext(ctx context.Context, uri string) (self *Client, err error) {
+	return dial(ctx, uri, 0)
 }
 
 func (self *Client) allCodecDataReady() bool {
@@ -439,7 +450,7 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 				if _, err = io.ReadFull(self.brconn, block[len(peek):]); err != nil {
 					return
 				}
-				//TODO: find a better way to sync reading latency
+				// TODO: find a better way to sync reading latency
 				time.Sleep(2 * time.Microsecond)
 				return
 			}
@@ -851,7 +862,7 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 		// 	log.Error("ParseSPS error:", err)
 		// } else {
 		// 	log.Infov("SPS", "Chroma_format_idc", info.Chroma_format_idc, "Seq_scaling_matrix_present_flag", info.Seq_scaling_matrix_present_flag,
-		// 		"Width", info.Width, "Height", info.Height, " vui_prameters_present_flag", info.Vui_prameters_present_flag, 
+		// 		"Width", info.Width, "Height", info.Height, " vui_prameters_present_flag", info.Vui_prameters_present_flag,
 		// 		", len(packet):", len(packet), ", bitPointer:", bitPointer, "fps", info.FPS)
 		// 	// if info.Vui_prameters_present_flag != 0 {
 		// 	// 	vuiInfo, err := h264parser.ParseVUI(packet, bitPointer)
