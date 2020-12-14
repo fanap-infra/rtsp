@@ -397,6 +397,9 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 
 	for i := 0; ; i++ {
 		var b byte
+		if i >= self.brconn.Size() {
+			return
+		}
 		if b, err = self.brconn.ReadByte(); err != nil {
 			return
 		}
