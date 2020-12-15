@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fanap-infra/log"
@@ -72,6 +73,7 @@ type Client struct {
 	streams    []*Stream
 	// streamsintf []av.CodecData
 	session string
+	lock    sync.RWMutex
 	// body        io.Reader
 }
 
@@ -384,6 +386,8 @@ func (self *Client) handle401(res *Response) (err error) {
 }
 
 func (self *Client) findRTSP() (block []byte, data []byte, err error) {
+	self.lock.Lock()
+	defer self.lock.Unlock()
 	const (
 		R = iota + 1
 		T
@@ -397,9 +401,6 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 
 	for i := 0; ; i++ {
 		var b byte
-		if i >= self.brconn.Size() {
-			return
-		}
 		if b, err = self.brconn.ReadByte(); err != nil {
 			return
 		}
