@@ -972,6 +972,10 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 		fuHeader := packet[1]
 		isStart := fuHeader&0x80 != 0
 		isEnd := fuHeader&0x40 != 0
+		if len(self.fuBuffer) > 1000000 {
+			logRTSP.Infov("handleH264Payload naluType FU-A", "fuBuffer size:", len(self.fuBuffer))
+			self.fuBuffer = []byte{}
+		}
 		if isStart {
 			self.fuStarted = true
 			self.fuBuffer = []byte{fuIndicator&0xe0 | fuHeader&0x1f}
@@ -987,6 +991,7 @@ func (self *Stream) handleH264Payload(timestamp uint32, packet []byte) (err erro
 		}
 
 	case naluType == 24: // STAP-A
+		logRTSP.Infov("handleH264Payload naluType STAP-A", "fuBuffer size:", len(self.fuBuffer))
 		/*
 			0                   1                   2                   3
 			0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
