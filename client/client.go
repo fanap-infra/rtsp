@@ -461,7 +461,7 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 			stat = 0
 			peek = _peek[0:0]
 		}
-		if i>=255 {
+		if i>255 {
 			log.Infov("rtsp: findRTSP", "i", i, "b", b, "blockSize", len(data))
 			break
 		}
