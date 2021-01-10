@@ -386,8 +386,8 @@ func (self *Client) handle401(res *Response) (err error) {
 }
 
 func (self *Client) findRTSP() (block []byte, data []byte, err error) {
-	self.lock.Lock()
-	defer self.lock.Unlock()
+	// self.lock.Lock()
+	// defer self.lock.Unlock()
 	const (
 		R = iota + 1
 		T
