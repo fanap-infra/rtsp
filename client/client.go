@@ -452,6 +452,7 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 				}
 				if left > 1000000 {
 					log.Errorv("BlockLength", "size", left)
+					continue
 				}
 
 				block = append(peek, make([]byte, left)...)
