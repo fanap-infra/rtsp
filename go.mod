@@ -3,5 +3,5 @@ module github.com/fanap-infra/rtsp
 go 1.14
 
 require (
-	github.com/fanap-infra/log v0.6.0
+	github.com/fanap-infra/log v1.6.1
 )
