@@ -119,7 +119,7 @@ func dial(ctx context.Context, uri string, timeout time.Duration) (self *Client,
 
 	self = &Client{
 		conn:            connt,
-		brconn:          bufio.NewReaderSize(connt, 256),
+		brconn:          bufio.NewReaderSize(connt, 1024),
 		url:             URL,
 		requestUri:      u2.String(),
 		SkipErrRtpBlock: SkipErrRtpBlock,
@@ -450,6 +450,10 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 				if left < 0 {
 					continue
 				}
+				if left > 1000000 {
+					log.Errorv("BlockLength", "size", left)
+				}
+
 				block = append(peek, make([]byte, left)...)
 				if _, err = io.ReadFull(self.brconn, block[len(peek):]); err != nil {
 					return
@@ -461,7 +465,7 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 			stat = 0
 			peek = _peek[0:0]
 		}
-                if i>255 {
+		if i > 255 {
 			log.Infov("rtsp: findRTSP", "i", i, "b", string(b), "blockSize", len(data), "block", len(block), "peek", len(peek), "url", self.url)
 			//break
 		}
