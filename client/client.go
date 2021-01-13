@@ -433,7 +433,18 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 			}
 		}
 
-		logRTP.Tracev("rtsp: findRTSP", "i", i, "b", b)
+		// logRTP.Tracev("rtsp: findRTSP", "i", i, "b", b)
+
+		if len(peek) > 2000000 {
+			log.Errorv("PeekLength", "len(peek)", len(peek), "len(block)", len(block))
+			peek = peek[:0]
+			stat = 0
+		}
+		if len(block) > 2000000 {
+			log.Errorv("BlockLength", "len(peek)", len(peek), "len(block)", len(block))
+			block = block[:0]
+			stat = 0
+		}
 
 		if stat != 0 {
 			peek = append(peek, b)
