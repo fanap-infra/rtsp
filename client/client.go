@@ -435,14 +435,14 @@ func (self *Client) findRTSP() (block []byte, data []byte, err error) {
 
 		// logRTP.Tracev("rtsp: findRTSP", "i", i, "b", b)
 
-		if len(peek) > 40000000 {
-			log.Errorv("PeekLength", "len(peek)", len(peek), "len(block)", len(block), "stat", stat)
+		if len(peek) > 20000000 {
+			log.Errorv("findRTSP PeekLength", "len(peek)", len(peek), "len(block)", len(block), "stat", stat)
 			err = fmt.Errorf("rtsp: Parse error")
 			return
 			// peek = peek[(len(peek) / 2):]
 			// stat = 0
 		}
-		if len(block) > 40000000 {
+		if len(block) > 20000000 {
 			log.Errorv("BlockLength", "len(peek)", len(peek), "len(block)", len(block), "stat", stat)
 			// block = block[(len(block) / 2):]
 			// stat = 0
@@ -515,7 +515,11 @@ func (self *Client) readLFLF() (block []byte, data []byte, err error) {
 			dollarpos = pos
 		}
 		peek = append(peek, b)
-
+		if len(peek) > 20000000 {
+			log.Errorv("read LFLF PeekLength", "len(peek)", len(peek), "len(block)", len(block), "stat", stat)
+			err = fmt.Errorf("rtsp: Parse error")
+			return
+		}
 		if stat == LFLF {
 			data = peek
 			return
